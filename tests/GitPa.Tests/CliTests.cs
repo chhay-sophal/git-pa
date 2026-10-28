@@ -91,6 +91,22 @@ public class CliTests
     }
 
     [Fact]
+    public void Status_RendersBranchTable()
+    {
+        using var repo = new TestRepo();
+        NewBranchOperation.Run(repo.Git, repo.Config, "feat/a", repo.Reporter);
+        var console = new TestConsole();
+        console.Profile.Width = 200;
+
+        var exitCode = Run(repo, console, "status");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("up to date with origin/dev", console.Output);
+        Assert.Contains("feat/a", console.Output);
+        Assert.Contains("not pushed", console.Output);
+    }
+
+    [Fact]
     public void New_FailsWithoutNameWhenNotInteractive()
     {
         using var repo = new TestRepo();
