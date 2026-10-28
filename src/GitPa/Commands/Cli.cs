@@ -2,16 +2,21 @@ using Spectre.Console;
 
 namespace GitPa.Commands;
 
-/// <summary>Shared console helpers for the command handlers.</summary>
-static class Cli
+/// <summary>The console and working directory the command handlers use, injectable for tests.</summary>
+public sealed class Cli(IAnsiConsole console, string workingDirectory)
 {
-    public static bool Interactive =>
-        AnsiConsole.Profile.Capabilities.Interactive && !Console.IsInputRedirected;
+    public IAnsiConsole Console { get; } = console;
 
-    public static IReporter Reporter { get; } = new ConsoleReporter();
+    public string WorkingDirectory { get; } = workingDirectory;
+
+    public bool Interactive => Console.Profile.Capabilities.Interactive;
+
+    public IReporter Reporter { get; } = new ConsoleReporter(console);
+
+    public GitRunner OpenRepository() => GitRunner.OpenRepository(WorkingDirectory);
 
     /// <summary>Runs a handler, turning expected failures into a red message and exit code 1.</summary>
-    public static int Execute(Func<int> handler)
+    public int Execute(Func<int> handler)
     {
         try
         {
@@ -19,13 +24,13 @@ static class Cli
         }
         catch (GitPaException e)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(e.Message)}");
+            Console.MarkupLine($"[red]error:[/] {Markup.Escape(e.Message)}");
             return 1;
         }
     }
 
     /// <summary>Uses the given value, or asks for it when running interactively.</summary>
-    public static string Require(string? value, string option, Func<string> prompt)
+    public string Require(string? value, string option, Func<string> prompt)
     {
         if (!string.IsNullOrWhiteSpace(value))
             return value;
@@ -34,13 +39,13 @@ static class Cli
         return prompt();
     }
 
-    public static void Success(string message) =>
-        AnsiConsole.MarkupLine($"[green]✓[/] {Markup.Escape(message)}");
+    public void Success(string message) =>
+        Console.MarkupLine($"[green]✓[/] {Markup.Escape(message)}");
 
-    sealed class ConsoleReporter : IReporter
+    sealed class ConsoleReporter(IAnsiConsole console) : IReporter
     {
-        public void Step(string message) => AnsiConsole.MarkupLine($"[grey]› {Markup.Escape(message)}[/]");
+        public void Step(string message) => console.MarkupLine($"[grey]› {Markup.Escape(message)}[/]");
 
-        public void Warn(string message) => AnsiConsole.MarkupLine($"[yellow]warning:[/] {Markup.Escape(message)}");
+        public void Warn(string message) => console.MarkupLine($"[yellow]warning:[/] {Markup.Escape(message)}");
     }
 }

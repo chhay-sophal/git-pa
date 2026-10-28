@@ -5,7 +5,7 @@ namespace GitPa.Commands;
 
 static class CommitCommand
 {
-    public static Command Create()
+    public static Command Create(Cli cli)
     {
         var branchOption = new Option<string>("--branch", "-b") { Description = "Feature branch to commit to" };
         var summaryOption = new Option<string>("--summary", "-m") { Description = "Commit summary" };
@@ -18,61 +18,61 @@ static class CommitCommand
         {
             branchOption, summaryOption, descriptionOption, allOption, pushOption, noPushOption,
         };
-        command.SetAction(parseResult => Cli.Execute(() =>
+        command.SetAction(parseResult => cli.Execute(() =>
         {
             if (parseResult.GetValue(pushOption) && parseResult.GetValue(noPushOption))
                 throw new GitPaException("Use either --push or --no-push, not both.");
 
-            var git = GitRunner.OpenRepository(Environment.CurrentDirectory);
+            var git = cli.OpenRepository();
             var config = PaConfig.Load(git);
             CommitOperation.EnsureOnDev(git, config);
 
-            Stage(git, parseResult.GetValue(allOption));
+            Stage(cli, git, parseResult.GetValue(allOption));
 
-            var target = Cli.Require(parseResult.GetValue(branchOption), "--branch", () => PickBranch(git, config));
-            var summary = Cli.Require(parseResult.GetValue(summaryOption), "--summary",
-                () => AnsiConsole.Prompt(new TextPrompt<string>("Commit summary:")
+            var target = cli.Require(parseResult.GetValue(branchOption), "--branch", () => PickBranch(cli, git, config));
+            var summary = cli.Require(parseResult.GetValue(summaryOption), "--summary",
+                () => cli.Console.Prompt(new TextPrompt<string>("Commit summary:")
                     .Validate(s => string.IsNullOrWhiteSpace(s)
                         ? ValidationResult.Error("A summary is required")
                         : ValidationResult.Success())));
             var description = parseResult.GetValue(descriptionOption);
-            if (description is null && Cli.Interactive)
-                description = AnsiConsole.Prompt(new TextPrompt<string>("Commit description [grey](optional)[/]:").AllowEmpty());
+            if (description is null && cli.Interactive)
+                description = cli.Console.Prompt(new TextPrompt<string>("Commit description [grey](optional)[/]:").AllowEmpty());
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
 
-            var sha = CommitOperation.Run(git, config, new CommitRequest(target, summary, description, push), Cli.Reporter);
-            Cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");
+            var sha = CommitOperation.Run(git, config, new CommitRequest(target, summary, description, push), cli.Reporter);
+            cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");
             return 0;
         }));
         return command;
     }
 
-    static void Stage(GitRunner git, bool all)
+    static void Stage(Cli cli, GitRunner git, bool all)
     {
         if (all)
         {
             git.Run("add", "-A");
         }
-        else if (!git.HasStagedChanges() && Cli.Interactive && git.Run("status", "--porcelain").Length > 0
-                 && AnsiConsole.Confirm("Nothing is staged. Stage all changes?", defaultValue: false))
+        else if (!git.HasStagedChanges() && cli.Interactive && git.Run("status", "--porcelain").Length > 0
+                 && cli.Console.Confirm("Nothing is staged. Stage all changes?", defaultValue: false))
         {
             git.Run("add", "-A");
         }
 
-        if (git.HasStagedChanges() && Cli.Interactive)
+        if (git.HasStagedChanges() && cli.Interactive)
         {
-            AnsiConsole.MarkupLine("[grey]Staged changes:[/]");
-            AnsiConsole.WriteLine(git.Run("diff", "--cached", "--stat"));
+            cli.Console.MarkupLine("[grey]Staged changes:[/]");
+            cli.Console.WriteLine(git.Run("diff", "--cached", "--stat"));
         }
     }
 
-    static string PickBranch(GitRunner git, PaConfig config)
+    static string PickBranch(Cli cli, GitRunner git, PaConfig config)
     {
         var branches = git.LocalBranches().Where(b => b != config.Main && b != config.Dev).ToList();
         if (branches.Count == 0)
             throw new GitPaException("There are no feature branches yet. Create one with: git pa new <name>");
-        return AnsiConsole.Prompt(new SelectionPrompt<string>()
+        return cli.Console.Prompt(new SelectionPrompt<string>()
             .Title("Target branch:")
             .PageSize(10)
             .AddChoices(branches));
