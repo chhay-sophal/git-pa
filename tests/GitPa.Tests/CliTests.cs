@@ -138,6 +138,22 @@ public class CliTests
     }
 
     [Fact]
+    public void Pr_PushesBranchAndPrintsUrlFromTemplate()
+    {
+        using var repo = new TestRepo();
+        NewBranchOperation.Run(repo.Git, repo.Config, "feat/a", repo.Reporter);
+        repo.Git.Run("config", PullRequestUrl.TemplateKey, "https://example.com/pr?from={branch}&to={target}");
+        var console = new TestConsole();
+        console.Profile.Width = 200;
+
+        var exitCode = Run(repo, console, "pr", "feat/a", "--print");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("https://example.com/pr?from=feat%2Fa&to=main", console.Output);
+        Assert.True(repo.Git.RemoteBranchExists("origin", "feat/a"));
+    }
+
+    [Fact]
     public void New_FailsWithoutNameWhenNotInteractive()
     {
         using var repo = new TestRepo();

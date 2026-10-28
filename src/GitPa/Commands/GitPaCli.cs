@@ -14,6 +14,7 @@ public static class GitPaCli
             SyncCommand.Create(cli),
             StatusCommand.Create(cli),
             UpdateCommand.Create(cli),
+            PrCommand.Create(cli),
         };
         root.Options.OfType<VersionOption>().Single().Aliases.Add("-v");
         return root;
