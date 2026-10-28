@@ -31,13 +31,14 @@ sealed class TestRepo : IDisposable
     /// <summary>Another developer's clone of the same origin.</summary>
     public GitRunner Clone(string name)
     {
-        new GitRunner(root).Run("clone", "--quiet", "origin.git", name);
-        var git = new GitRunner(Path.Combine(root, name));
-        git.Run("config", "user.name", "Test");
-        git.Run("config", "user.email", "test@example.com");
-        git.Run("config", "commit.gpgsign", "false");
-        git.Run("config", "core.autocrlf", "false");
-        return git;
+        // Config passed to clone applies before checkout, so files are checked out byte-for-byte.
+        new GitRunner(root).Run("clone", "--quiet",
+            "-c", "core.autocrlf=false",
+            "-c", "commit.gpgsign=false",
+            "-c", "user.name=Test",
+            "-c", "user.email=test@example.com",
+            "origin.git", name);
+        return new GitRunner(Path.Combine(root, name));
     }
 
     public static void Write(GitRunner git, string file, string content) =>
