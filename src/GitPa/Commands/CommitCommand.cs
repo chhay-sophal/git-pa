@@ -9,7 +9,10 @@ static class CommitCommand
     {
         var branchOption = new Option<string>("--branch", "-b") { Description = "Feature branch to commit to" };
         var summaryOption = new Option<string>("--summary", "-m") { Description = "Commit summary" };
-        var descriptionOption = new Option<string>("--description", "-d") { Description = "Commit description" };
+        var descriptionOption = new Option<string[]>("--description", "-d")
+        {
+            Description = "Commit description; repeat for more paragraphs",
+        };
         var allOption = new Option<bool>("--all", "-a") { Description = "Commit all changes instead of choosing files" };
         var pushOption = new Option<bool>("--push") { Description = "Push after committing, regardless of pa.autoPush" };
         var noPushOption = new Option<bool>("--no-push") { Description = "Do not push, regardless of pa.autoPush" };
@@ -54,9 +57,10 @@ static class CommitCommand
                     .Validate(s => string.IsNullOrWhiteSpace(s)
                         ? ValidationResult.Error("A summary is required")
                         : ValidationResult.Success())));
-            var description = parseResult.GetValue(descriptionOption);
-            if (description is null && cli.Interactive)
-                description = cli.Console.Prompt(new TextPrompt<string>("Commit description [grey](optional)[/]:").AllowEmpty());
+            var paragraphs = parseResult.GetValue(descriptionOption);
+            var description = paragraphs is { Length: > 0 }
+                ? string.Join("\n\n", paragraphs) // like repeated git commit -m
+                : cli.Interactive ? PromptDescription(cli) : null;
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
             var request = new CommitRequest(target, summary, description, push);
@@ -87,6 +91,21 @@ static class CommitCommand
             prompt.Select(file);
 
         ChangedFiles.Stage(git, files, cli.Console.Prompt(prompt));
+    }
+
+    /// <summary>Reads description lines until an empty line.</summary>
+    static string PromptDescription(Cli cli)
+    {
+        var lines = new List<string>();
+        var question = "Commit description [grey](optional, empty line to finish)[/]:";
+        while (true)
+        {
+            var line = cli.Console.Prompt(new TextPrompt<string>(question).AllowEmpty());
+            if (string.IsNullOrWhiteSpace(line))
+                return string.Join('\n', lines);
+            lines.Add(line);
+            question = "[grey]>[/]";
+        }
     }
 
     static string PickBranch(Cli cli, GitRunner git, PaConfig config)

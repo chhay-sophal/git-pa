@@ -51,6 +51,37 @@ public class CliTests
     }
 
     [Fact]
+    public void Commit_ReadsMultiLineDescriptionUntilEmptyLine()
+    {
+        using var repo = new TestRepo();
+        NewBranchOperation.Run(repo.Git, repo.Config, "feat/a", repo.Reporter);
+        TestRepo.Write(repo.Git, "README.md", "changed\n");
+        var console = InteractiveConsole();
+        console.Input.PushTextWithEnter("First line");
+        console.Input.PushTextWithEnter("Second line");
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = Run(repo, console, "commit", "-a", "-b", "feat/a", "-m", "Summary", "--no-push");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("First line\nSecond line", repo.Git.Run("log", "-1", "--format=%b", "feat/a"));
+    }
+
+    [Fact]
+    public void Commit_RepeatedDescriptionOptionsBecomeParagraphs()
+    {
+        using var repo = new TestRepo();
+        NewBranchOperation.Run(repo.Git, repo.Config, "feat/a", repo.Reporter);
+        TestRepo.Write(repo.Git, "README.md", "changed\n");
+
+        var exitCode = Run(repo, new TestConsole(),
+            "commit", "-a", "-b", "feat/a", "-m", "Summary", "-d", "First paragraph", "-d", "Second paragraph", "--no-push");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("First paragraph\n\nSecond paragraph", repo.Git.Run("log", "-1", "--format=%b", "feat/a"));
+    }
+
+    [Fact]
     public void Commit_ChecksOptionsBeforeStaging_WhenNotInteractive()
     {
         using var repo = new TestRepo();

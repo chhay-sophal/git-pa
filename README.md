@@ -45,13 +45,14 @@ auto-push is off).
 
 In a terminal, you pick the files to commit from a checklist (already staged files are
 pre-selected; partially staged files keep their staged hunks). Then you pick the feature
-branch and type the commit message. Every prompt can also be answered with an option:
+branch and type the commit message. The description can span several lines; an empty line
+finishes it. Every prompt can also be answered with an option:
 
 | Option | Meaning |
 | --- | --- |
 | `-b, --branch` | Feature branch to commit to |
 | `-m, --summary` | Commit summary |
-| `-d, --description` | Commit description (optional) |
+| `-d, --description` | Commit description (optional); repeat for more paragraphs, like `git commit -m` |
 | `-a, --all` | Commit all changes instead of choosing files |
 | `--push` / `--no-push` | Override the `pa.autoPush` setting for this commit |
 | `--dry-run` | Show what would happen without changing anything |
