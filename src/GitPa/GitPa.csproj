@@ -13,6 +13,7 @@
     <ToolCommandName>git-pa</ToolCommandName>
     <PackageId>GitPa</PackageId>
     <Version>0.1.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Description>Git workflow helper for Power Apps plugin developers sharing a dev environment.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageOutputPath>../../artifacts</PackageOutputPath>
