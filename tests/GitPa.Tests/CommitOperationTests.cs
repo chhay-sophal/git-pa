@@ -119,6 +119,98 @@ public class CommitOperationTests
     }
 
     [Fact]
+    public void MergesTeammatesDevPushes_SoThePushSucceeds()
+    {
+        using var repo = RepoWithFeature();
+        var teammate = repo.Clone("teammate");
+        teammate.Run("switch", "--quiet", "dev");
+        TestRepo.Write(teammate, "teammate.txt", "teammate's feature\n");
+        TestRepo.Commit(teammate, "teammate feature on dev");
+        teammate.Run("push", "--quiet", "origin", "dev");
+        TestRepo.Write(repo.Git, "README.md", "changed\n");
+        repo.Git.Run("add", "README.md");
+
+        Commit(repo);
+
+        Assert.Equal("teammate's feature\n", TestRepo.Read(repo.Git, "teammate.txt"));
+        Assert.Equal(repo.Git.Run("rev-parse", "dev"), repo.Git.Run("rev-parse", "origin/dev"));
+        Assert.Empty(repo.Reporter.Warnings);
+    }
+
+    [Fact]
+    public void LeavesConflictingMergeOpen_WithInstructions()
+    {
+        using var repo = RepoWithFeature();
+        // A teammate changes line 5 on the feature branch; dev has its own change to line 5.
+        repo.Git.Run("push", "--quiet", "origin", "feat/a");
+        var teammate = repo.Clone("teammate");
+        teammate.Run("switch", "--quiet", "feat/a");
+        TestRepo.Write(teammate, "README.md", Readme.Replace("line 5\n", "line five (teammate)\n"));
+        TestRepo.Commit(teammate, "teammate edit");
+        teammate.Run("push", "--quiet", "origin", "feat/a");
+        TestRepo.Write(repo.Git, "README.md", Readme.Replace("line 5\n", "line five (dev)\n"));
+        TestRepo.Commit(repo.Git, "dev edit");
+        TestRepo.Write(repo.Git, "README.md", Readme.Replace("line 1\n", "line one\n").Replace("line 5\n", "line five (dev)\n"));
+        repo.Git.Run("add", "README.md");
+
+        var error = Assert.Throws<GitPaException>(() => Commit(repo));
+
+        Assert.Contains("conflicts in", error.Message);
+        Assert.Contains("README.md", error.Message);
+        Assert.DoesNotContain("stash pop", error.Message);
+        Assert.Equal("Change line 1", repo.Git.Run("log", "-1", "--format=%s", "feat/a"));
+        Assert.True(repo.Git.Succeeds("rev-parse", "-q", "--verify", "MERGE_HEAD"));
+        Assert.Empty(repo.Git.Run("stash", "list"));
+        Assert.Throws<GitPaException>(() => Commit(repo)); // refuses while the merge is open
+    }
+
+    [Fact]
+    public void ConflictKeepsUnstagedChangesInStash()
+    {
+        using var repo = RepoWithFeature();
+        TestRepo.Write(repo.Git, "notes.txt", "notes\n");
+        TestRepo.Commit(repo.Git, "dev-only notes");
+        var teammate = repo.Clone("teammate");
+        teammate.Run("switch", "--quiet", "dev");
+        TestRepo.Write(teammate, "README.md", Readme.Replace("line 9\n", "line nine (teammate)\n"));
+        TestRepo.Commit(teammate, "teammate edit on dev");
+        teammate.Run("push", "--quiet", "origin", "dev");
+        TestRepo.Write(repo.Git, "README.md", Readme.Replace("line 9\n", "line nine (me)\n"));
+        TestRepo.Commit(repo.Git, "my edit on dev");
+        TestRepo.Write(repo.Git, "README.md", Readme.Replace("line 1\n", "line one\n").Replace("line 9\n", "line nine (me)\n"));
+        repo.Git.Run("add", "README.md");
+        TestRepo.Write(repo.Git, "notes.txt", "unstaged notes\n");
+
+        var error = Assert.Throws<GitPaException>(() => Commit(repo));
+
+        Assert.Contains("origin/dev", error.Message);
+        Assert.Contains("git merge --no-edit feat/a", error.Message);
+        Assert.Contains("git stash pop", error.Message);
+        Assert.Single(repo.Git.Run("stash", "list").Split('\n'));
+    }
+
+    [Fact]
+    public void RefusesWhenUntrackedFilesWouldBeOverwritten()
+    {
+        using var repo = RepoWithFeature();
+        var teammate = repo.Clone("teammate");
+        teammate.Run("switch", "--quiet", "dev");
+        TestRepo.Write(teammate, "new.txt", "teammate's file\n");
+        TestRepo.Commit(teammate, "add new.txt");
+        teammate.Run("push", "--quiet", "origin", "dev");
+        TestRepo.Write(repo.Git, "new.txt", "my untracked file\n");
+        TestRepo.Write(repo.Git, "README.md", "changed\n");
+        repo.Git.Run("add", "README.md");
+        var featureBefore = repo.Git.Run("rev-parse", "feat/a");
+
+        var error = Assert.Throws<GitPaException>(() => Commit(repo));
+
+        Assert.Contains("new.txt", error.Message);
+        Assert.Equal(featureBefore, repo.Git.Run("rev-parse", "feat/a"));
+        Assert.Equal("my untracked file\n", TestRepo.Read(repo.Git, "new.txt"));
+    }
+
+    [Fact]
     public void RejectsWhenNotOnDev()
     {
         using var repo = RepoWithFeature();

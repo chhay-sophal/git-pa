@@ -11,32 +11,27 @@ public sealed record CommitRequest(string Target, string Summary, string? Descri
 /// </summary>
 public static class CommitOperation
 {
-    public static void EnsureOnDev(GitRunner git, PaConfig config)
-    {
-        var current = git.CurrentBranch();
-        if (current != config.Dev)
-            throw new GitPaException(
-                $"You are on '{current ?? "a detached HEAD"}'. Switch to the dev branch first: git switch {config.Dev}");
-    }
+    public static void EnsureOnDev(GitRunner git, PaConfig config) => DevBranch.EnsureCheckedOut(git, config);
 
     /// <summary>Returns the short hash of the new commit on the target branch.</summary>
     public static string Run(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter)
     {
         var target = request.Target;
-        EnsureOnDev(git, config);
-        if (target == config.Main || target == config.Dev)
-            throw new GitPaException($"Commit to a feature branch, not '{target}'.");
-        if (string.IsNullOrWhiteSpace(request.Summary))
-            throw new GitPaException("A commit summary is required.");
-        if (!git.HasStagedChanges())
-            throw new GitPaException("Nothing is staged. Stage the changes for this commit with `git add` (or use --all).");
+        Validate(git, config, request);
+        Fetch(git, config, target, reporter);
+        EnsureLocalBranch(git, config, target);
 
-        EnsureLocalBranch(git, config, target, reporter);
+        // Merge the latest remote dev too, so the push afterwards isn't rejected.
+        var incoming = new List<string> { target };
+        if (git.RemoteBranchExists(config.Remote, config.Dev))
+            incoming.Insert(0, $"{config.Remote}/{config.Dev}");
+        DevBranch.CheckUntrackedCollisions(git, config, incoming);
 
         var sha = CommitInWorktree(git, config, request, reporter);
         reporter.Step($"Committed {sha} to {target}");
 
-        MergeIntoDev(git, config, target, reporter);
+        DevBranch.Merge(git, incoming, DevBranch.Restore.UnstagedOnly,
+            $"Committed {sha} to '{target}' (that part is done). ", reporter);
         reporter.Step($"Merged {target} into {config.Dev}");
 
         if (request.Push)
@@ -44,15 +39,32 @@ public static class CommitOperation
         return sha;
     }
 
-    static void EnsureLocalBranch(GitRunner git, PaConfig config, string target, IReporter reporter)
+    static void Validate(GitRunner git, PaConfig config, CommitRequest request, bool requireStaged = true)
     {
-        if (git.RemoteExists(config.Remote))
-        {
-            reporter.Step($"Fetching {config.Remote}/{target}");
-            // Fails harmlessly when the branch has never been pushed.
-            git.TryRun("fetch", "--quiet", config.Remote, target);
-        }
+        DevBranch.EnsureCheckedOut(git, config);
+        if (request.Target == config.Main || request.Target == config.Dev)
+            throw new GitPaException($"Commit to a feature branch, not '{request.Target}'.");
+        if (string.IsNullOrWhiteSpace(request.Summary))
+            throw new GitPaException("A commit summary is required.");
+        if (requireStaged && !git.HasStagedChanges())
+            throw new GitPaException("Nothing is staged. Stage the changes for this commit with `git add` (or use --all).");
+    }
 
+    static void Fetch(GitRunner git, PaConfig config, string target, IReporter reporter)
+    {
+        if (!git.RemoteExists(config.Remote))
+            return;
+
+        reporter.Step($"Fetching {target} and {config.Dev} from {config.Remote}");
+        // Fails harmlessly when the feature branch has never been pushed.
+        git.TryRun("fetch", "--quiet", config.Remote, target);
+        var dev = git.TryRun("fetch", "--quiet", config.Remote, config.Dev);
+        if (!dev.Success)
+            reporter.Warn($"Could not fetch {config.Remote}/{config.Dev}; using the last known version.\n{dev.Message}");
+    }
+
+    static void EnsureLocalBranch(GitRunner git, PaConfig config, string target)
+    {
         if (git.LocalBranchExists(target))
             return;
         if (!git.RemoteBranchExists(config.Remote, target))
@@ -60,13 +72,20 @@ public static class CommitOperation
         git.Run("branch", "--quiet", "--track", target, $"{config.Remote}/{target}");
     }
 
+    static string WorktreePath(GitRunner git, string target) =>
+        Path.Combine(git.CommonDir(), "pa-worktrees", Regex.Replace(target, @"[^\w.-]", "_"));
+
+    static string[] CommitArgs(CommitRequest request) =>
+        string.IsNullOrWhiteSpace(request.Description)
+            ? ["commit", "--quiet", "-m", request.Summary]
+            : ["commit", "--quiet", "-m", request.Summary, "-m", request.Description];
+
     static string CommitInWorktree(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter)
     {
         var target = request.Target;
-        var workDir = Path.Combine(git.CommonDir(), "pa-worktrees");
-        Directory.CreateDirectory(workDir);
-        var path = Path.Combine(workDir, Regex.Replace(target, @"[^\w.-]", "_"));
+        var path = WorktreePath(git, target);
         var patch = path + ".patch";
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
         // Clean up after an earlier run that was interrupted.
         git.TryRun("worktree", "prune");
@@ -106,10 +125,7 @@ public static class CommitOperation
                     $"Your staged changes don't apply cleanly to '{target}'. They probably depend on code that is " +
                     $"on {config.Dev} but not on {target}. Nothing was committed.\n{apply.Message}");
 
-            var commitArgs = new List<string> { "commit", "--quiet", "-m", request.Summary };
-            if (!string.IsNullOrWhiteSpace(request.Description))
-                commitArgs.AddRange(["-m", request.Description]);
-            var commit = worktree.TryRun([.. commitArgs]);
+            var commit = worktree.TryRun(CommitArgs(request));
             if (!commit.Success)
                 throw new GitPaException($"Committing to '{target}' failed. Nothing was committed.\n{commit.Message}");
 
@@ -120,38 +136,6 @@ public static class CommitOperation
             git.TryRun("worktree", "remove", "--force", path);
             File.Delete(patch);
         }
-    }
-
-    static void MergeIntoDev(GitRunner git, PaConfig config, string target, IReporter reporter)
-    {
-        // The staged changes now arrive through the merge, so set the working tree aside first.
-        // Unstaged changes come back afterwards.
-        var hasUnstaged = !git.Succeeds("diff", "--quiet");
-        git.Run("stash", "push", "--quiet", "-m", $"git-pa: changes committed to {target}");
-
-        var merge = git.TryRun("merge", "--no-edit", target);
-        if (!merge.Success)
-        {
-            git.TryRun("merge", "--abort");
-            var restored = git.TryRun("stash", "pop", "--index").Success;
-            throw new GitPaException(
-                $"Committed to '{target}', but merging it into '{config.Dev}' failed:\n{merge.Message}\n" +
-                (restored
-                    ? "Your working tree is back as it was. Since the commit is already on the feature branch, " +
-                      $"discard the staged changes and run: git merge {target}"
-                    : "Your changes are saved in the stash (see git stash list)."));
-        }
-
-        if (!hasUnstaged)
-        {
-            git.Run("stash", "drop", "--quiet");
-            return;
-        }
-
-        if (git.TryRun("stash", "apply", "--quiet").Success)
-            git.Run("stash", "drop", "--quiet");
-        else
-            reporter.Warn("Your unstaged changes could not be restored cleanly. They are saved in the stash (see git stash list).");
     }
 
     static void Push(GitRunner git, PaConfig config, string target, IReporter reporter)
@@ -172,6 +156,6 @@ public static class CommitOperation
         if (failed.Count > 0)
             reporter.Warn(
                 $"Push failed for {string.Join(" and ", failed)}. Your commit is safe locally. " +
-                $"Fix the problem (for example with git pull) and then run: git push {config.Remote} {string.Join(' ', failed)}");
+                $"Fix the problem (for example with git pa sync) and then run: git push {config.Remote} {string.Join(' ', failed)}");
     }
 }
