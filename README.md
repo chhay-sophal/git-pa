@@ -6,6 +6,12 @@ Stay on the dev branch all the time. `git pa` creates feature branches from main
 commits your staged changes to a feature branch (then merges it back into dev) without
 your working tree ever switching branches.
 
+## Prerequisites
+
+- [.NET SDK](https://dotnet.microsoft.com/download) 8 or later (`dotnet --version`)
+- Git, recent version (`git --version`)
+- Push access to the repository's remote, if you use auto-push
+
 ## Install
 
 ```sh
