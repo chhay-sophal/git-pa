@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GitPa/GitPa.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GitPa.Tests/GitPa.Tests.csproj" />
+  </Folder>
+</Solution>
