@@ -10,11 +10,11 @@ static class CommitCommand
         var branchOption = new Option<string>("--branch", "-b") { Description = "Feature branch to commit to" };
         var summaryOption = new Option<string>("--summary", "-m") { Description = "Commit summary" };
         var descriptionOption = new Option<string>("--description", "-d") { Description = "Commit description" };
-        var allOption = new Option<bool>("--all", "-a") { Description = "Stage all changes before committing" };
+        var allOption = new Option<bool>("--all", "-a") { Description = "Commit all changes instead of choosing files" };
         var pushOption = new Option<bool>("--push") { Description = "Push after committing, regardless of pa.autoPush" };
         var noPushOption = new Option<bool>("--no-push") { Description = "Do not push, regardless of pa.autoPush" };
 
-        var command = new Command("commit", "Commit staged changes to a feature branch and merge it into dev")
+        var command = new Command("commit", "Commit changes to a feature branch and merge it into dev")
         {
             branchOption, summaryOption, descriptionOption, allOption, pushOption, noPushOption,
         };
@@ -27,10 +27,26 @@ static class CommitCommand
             var config = PaConfig.Load(git);
             CommitOperation.EnsureOnDev(git, config);
 
-            Stage(cli, git, parseResult.GetValue(allOption));
+            var branch = parseResult.GetValue(branchOption);
+            var summary = parseResult.GetValue(summaryOption);
+            if (!cli.Interactive)
+            {
+                // Check required options before staging anything.
+                foreach (var (value, option) in new[] { (branch, "--branch"), (summary, "--summary") })
+                {
+                    if (string.IsNullOrWhiteSpace(value))
+                        throw new GitPaException($"Missing {option}.");
+                }
+            }
 
-            var target = cli.Require(parseResult.GetValue(branchOption), "--branch", () => PickBranch(cli, git, config));
-            var summary = cli.Require(parseResult.GetValue(summaryOption), "--summary",
+            var all = parseResult.GetValue(allOption);
+            if (all)
+                git.Run("add", "-A");
+            else if (cli.Interactive)
+                PickFiles(cli, git);
+
+            var target = cli.Require(branch, "--branch", () => PickBranch(cli, git, config));
+            summary = cli.Require(summary, "--summary",
                 () => cli.Console.Prompt(new TextPrompt<string>("Commit summary:")
                     .Validate(s => string.IsNullOrWhiteSpace(s)
                         ? ValidationResult.Error("A summary is required")
@@ -40,31 +56,32 @@ static class CommitCommand
                 description = cli.Console.Prompt(new TextPrompt<string>("Commit description [grey](optional)[/]:").AllowEmpty());
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
+            var request = new CommitRequest(target, summary, description, push);
 
-            var sha = CommitOperation.Run(git, config, new CommitRequest(target, summary, description, push), cli.Reporter);
+            var sha = CommitOperation.Run(git, config, request, cli.Reporter);
             cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");
             return 0;
         }));
         return command;
     }
 
-    static void Stage(Cli cli, GitRunner git, bool all)
+    static void PickFiles(Cli cli, GitRunner git)
     {
-        if (all)
-        {
-            git.Run("add", "-A");
-        }
-        else if (!git.HasStagedChanges() && cli.Interactive && git.Run("status", "--porcelain").Length > 0
-                 && cli.Console.Confirm("Nothing is staged. Stage all changes?", defaultValue: false))
-        {
-            git.Run("add", "-A");
-        }
+        var files = ChangedFiles.List(git);
+        if (files.Count == 0)
+            throw new GitPaException("There are no changes to commit.");
 
-        if (git.HasStagedChanges() && cli.Interactive)
-        {
-            cli.Console.MarkupLine("[grey]Staged changes:[/]");
-            cli.Console.WriteLine(git.Run("diff", "--cached", "--stat"));
-        }
+        var prompt = new MultiSelectionPrompt<ChangedFile>()
+            .Title("Files to commit:")
+            .PageSize(15)
+            .Required()
+            .InstructionsText("[grey](space to toggle, enter to accept)[/]")
+            .UseConverter(f => Markup.Escape($"{f.Kind,-9}{f.Path}") + (f.IsPartiallyStaged ? " [grey](partially staged)[/]" : ""))
+            .AddChoices(files);
+        foreach (var file in files.Where(f => f.IsStaged))
+            prompt.Select(file);
+
+        ChangedFiles.Stage(git, files, cli.Console.Prompt(prompt));
     }
 
     static string PickBranch(Cli cli, GitRunner git, PaConfig config)
