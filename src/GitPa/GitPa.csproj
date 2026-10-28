@@ -14,7 +14,14 @@
     <PackageId>GitPa</PackageId>
     <Version>0.1.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <Description>Git workflow helper for Power Apps plugin developers sharing a dev environment.</Description>
+    <Description>Stay on your dev branch: create feature branches from main and commit to them without switching. A git helper for Power Apps plugin teams sharing one dev environment.</Description>
+    <Authors>Chhay Sophal</Authors>
+    <Copyright>Copyright (c) 2026 Chhay Sophal</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/chhay-sophal/git-pa</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chhay-sophal/git-pa</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>git;power-apps;power-platform;dataverse;dynamics-365;plugins;cli;git-workflow</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageOutputPath>../../artifacts</PackageOutputPath>
   </PropertyGroup>
