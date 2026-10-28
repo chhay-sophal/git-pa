@@ -71,6 +71,10 @@ finishes it. Every prompt can also be answered with an option:
 | `--push` / `--no-push` | Override the `pa.autoPush` setting for this commit |
 | `--dry-run` | Show what would happen without changing anything |
 
+When the target branch carries a ticket (`feature/PA-77-add-login`), the summary is prefixed
+with it (`PA-77: Add login page`), so Bitbucket links the commit to the Jira issue. Summaries
+that already start with the ticket are left alone.
+
 Without a terminal (scripts, CI), `--branch` and `--summary` are required and the currently
 staged changes are committed (or all changes, with `--all`).
 

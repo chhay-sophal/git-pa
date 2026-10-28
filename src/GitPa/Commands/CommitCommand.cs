@@ -63,7 +63,7 @@ static class CommitCommand
                 : cli.Interactive ? PromptDescription(cli) : null;
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
-            var request = new CommitRequest(target, summary, description, push);
+            var request = new CommitRequest(target, BranchName.WithTicketPrefix(target, summary), description, push);
             if (dryRun)
                 return cli.PrintPlan(CommitOperation.Plan(git, config, request, stageAll: all));
 
