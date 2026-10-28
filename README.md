@@ -107,9 +107,34 @@ them with `git config --global pa.autoPush false`.
 ```sh
 dotnet build
 dotnet test
-dotnet pack src/GitPa -c Release      # -> artifacts/GitPa.<version>.nupkg
-dotnet tool install -g GitPa --add-source ./artifacts
 ```
+
+### Run from source
+
+Stand in a plugin repository and run the tool straight from the source. Everything after
+`--` is passed to git-pa:
+
+```sh
+cd path/to/plugin-repo
+dotnet run --project path/to/git-pa/src/GitPa -- status
+dotnet run --project path/to/git-pa/src/GitPa -- commit --dry-run
+```
+
+### Install a local build
+
+Pack under a unique pre-release version, then update your global install to it. Bump the
+suffix (`-dev.2`, `-dev.3`, …) for each new build: reusing a version makes NuGet serve the
+cached older package.
+
+```sh
+dotnet pack src/GitPa -c Release -p:Version=0.2.0-dev.1      # -> artifacts/
+dotnet tool update -g GitPa --add-source ./artifacts --version 0.2.0-dev.1
+git pa -v
+```
+
+Go back to the published version with `dotnet tool update -g GitPa`. A pre-release
+(`0.2.0-dev.1`) is lower than the final `0.2.0`, so this moves you up once it's released.
+To go back to an older release, add `--version <version> --allow-downgrade`.
 
 ## Releasing
 
