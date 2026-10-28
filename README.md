@@ -30,7 +30,7 @@ git pa init --main main --dev dev
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
-`new`, `commit` and `sync` accept `--dry-run` to show the git commands they would run
+`new`, `commit`, `sync`, `update`, `clean` and `reset-dev` accept `--dry-run` to show the git commands they would run
 without changing anything.
 
 ### `git pa new [name]`
@@ -88,6 +88,52 @@ Shows whether dev is behind or ahead of the remote, and a table of your feature 
 how far each is ahead of or behind main, whether it is fully merged into dev, and whether it
 has been pushed. Add `--fetch` to fetch from the remote first.
 
+### `git pa update [branch]`
+
+Merges the latest main into a feature branch (picked from a list if omitted) in a temporary
+worktree, so you stay on dev, then pushes it (unless auto-push is off). Use it on branches
+that went stale while waiting for approval. `--all` updates every local feature branch.
+
+On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
+
+### `git pa pr [branch]`
+
+Opens the "create pull request" page from the feature branch to main in your browser,
+pushing the branch first if needed. Works for GitHub, Azure DevOps, Bitbucket Cloud and
+Bitbucket Server, including SSH host aliases from `~/.ssh/config`. `--print` prints the URL
+instead. For other hosts, set a URL template:
+
+```sh
+git config pa.prUrl "https://git.example.com/repo/pulls/new?from={branch}&to={target}"
+```
+
+### `git pa clean`
+
+Deletes local feature branches whose work is already in main, including branches whose pull
+request was squash-merged. Branches you created but never committed to are kept. You pick
+from the list (all pre-selected); `--yes` deletes without asking, `--dry-run` only lists them.
+
+### `git pa reset-dev`
+
+Over time dev collects abandoned experiments. `reset-dev` rebuilds it as main plus the
+feature branches you pick (those in dev now are pre-selected) and force-pushes it with
+`--force-with-lease`, so it fails safely if someone pushed in the meantime. Your old dev is
+kept as `refs/pa-backup/dev-<date>`.
+
+This replaces dev for the whole team, so tell your teammates first. Their next `git pa sync`
+or `git pa commit` notices the reset and moves their dev onto the new one, keeping their
+uncommitted changes and backing up their old dev (and listing any commits that were only on
+it). They should not use plain `git pull` on dev afterwards: it would merge the old history
+back in.
+
+Non-interactively, pick branches with `-b` (repeatable) and confirm with `--yes`.
+
+### Update notice
+
+When run in a terminal, git-pa checks nuget.org at most once a day and tells you when a newer
+version is available. Turn it off with `git config --global pa.updateCheck false` or the
+environment variable `GIT_PA_NO_UPDATE_CHECK=1`.
+
 ## Configuration
 
 Stored in git config (per repository, or `--global`):
@@ -97,7 +143,9 @@ Stored in git config (per repository, or `--global`):
 | `pa.main` | — | Main branch name |
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
-| `pa.autoPush` | `true` | Push the feature and dev branches after `commit` |
+| `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
+| `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 Turn off auto-push for one repository with `git config pa.autoPush false`, or for all of
 them with `git config --global pa.autoPush false`.
