@@ -1,3 +1,4 @@
+using System.CommandLine;
 using Spectre.Console;
 
 namespace GitPa.Commands;
@@ -37,6 +38,17 @@ public sealed class Cli(IAnsiConsole console, string workingDirectory)
         if (!Interactive)
             throw new GitPaException($"Missing {option}.");
         return prompt();
+    }
+
+    public static Option<bool> DryRunOption() =>
+        new("--dry-run") { Description = "Show the git commands that would run, without changing anything" };
+
+    public int PrintPlan(IReadOnlyList<string> steps)
+    {
+        Console.MarkupLine("[yellow]Dry run[/], nothing was changed. These steps would run:");
+        for (var i = 0; i < steps.Count; i++)
+            Console.MarkupLine($"  [grey]{i + 1}.[/] {Markup.Escape(steps[i])}");
+        return 0;
     }
 
     public void Success(string message) =>

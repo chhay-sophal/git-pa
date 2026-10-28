@@ -39,6 +39,46 @@ public static class CommitOperation
         return sha;
     }
 
+    /// <summary>
+    /// Validates the request and returns the git commands <see cref="Run"/> would execute.
+    /// With <paramref name="stageAll"/>, everything is staged first, so nothing needs to be staged yet.
+    /// </summary>
+    public static IReadOnlyList<string> Plan(GitRunner git, PaConfig config, CommitRequest request, bool stageAll)
+    {
+        Validate(git, config, request, requireStaged: !stageAll);
+        var (target, remote, dev) = (request.Target, config.Remote, config.Dev);
+        if (!git.LocalBranchExists(target) && !git.RemoteBranchExists(remote, target))
+            throw new GitPaException($"Branch '{target}' does not exist. Create it with: git pa new {target}");
+
+        var worktree = Path.GetRelativePath(git.WorkingDirectory, WorktreePath(git, target)).Replace('\\', '/');
+        var hasRemote = git.RemoteExists(remote);
+        var steps = new List<string>();
+        if (stageAll)
+            steps.Add(GitRunner.Format("add", "-A"));
+        if (hasRemote)
+        {
+            steps.Add(GitRunner.Format("fetch", remote, target));
+            steps.Add(GitRunner.Format("fetch", remote, dev));
+        }
+        steps.Add(GitRunner.Format("worktree", "add", worktree, target));
+        if (git.RemoteBranchExists(remote, target))
+            steps.Add("  in worktree: " + GitRunner.Format("merge", "--ff-only", $"{remote}/{target}"));
+        steps.Add("  in worktree: git apply --3way --index <your staged changes>");
+        steps.Add("  in worktree: " + GitRunner.Format(CommitArgs(request)));
+        steps.Add(GitRunner.Format("worktree", "remove", worktree));
+        steps.Add("git stash push");
+        if (git.RemoteBranchExists(remote, dev))
+            steps.Add(GitRunner.Format("merge", "--no-edit", $"{remote}/{dev}") + "   (if behind)");
+        steps.Add(GitRunner.Format("merge", "--no-edit", target));
+        steps.Add("git stash apply && git stash drop   (brings back unstaged changes, if any)");
+        if (request.Push && hasRemote)
+        {
+            steps.Add(GitRunner.Format("push", "-u", remote, target));
+            steps.Add(GitRunner.Format("push", remote, dev));
+        }
+        return steps;
+    }
+
     static void Validate(GitRunner git, PaConfig config, CommitRequest request, bool requireStaged = true)
     {
         DevBranch.EnsureCheckedOut(git, config);

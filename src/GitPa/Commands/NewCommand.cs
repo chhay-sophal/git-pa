@@ -13,7 +13,12 @@ static class NewCommand
             Arity = ArgumentArity.ZeroOrOne,
         };
 
-        var command = new Command("new", "Create a feature branch from the latest main, staying on dev") { nameArgument };
+        var dryRunOption = Cli.DryRunOption();
+
+        var command = new Command("new", "Create a feature branch from the latest main, staying on dev")
+        {
+            nameArgument, dryRunOption,
+        };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var git = cli.OpenRepository();
@@ -24,6 +29,9 @@ static class NewCommand
                     .Validate(n => git.IsValidBranchName(n)
                         ? ValidationResult.Success()
                         : ValidationResult.Error("Not a valid branch name"))));
+
+            if (parseResult.GetValue(dryRunOption))
+                return cli.PrintPlan(NewBranchOperation.Plan(git, config, name));
 
             var baseRef = NewBranchOperation.Run(git, config, name, cli.Reporter);
             cli.Success($"Created {name} from {baseRef}. You are still on {git.CurrentBranch() ?? "a detached HEAD"}.");

@@ -13,10 +13,11 @@ static class CommitCommand
         var allOption = new Option<bool>("--all", "-a") { Description = "Commit all changes instead of choosing files" };
         var pushOption = new Option<bool>("--push") { Description = "Push after committing, regardless of pa.autoPush" };
         var noPushOption = new Option<bool>("--no-push") { Description = "Do not push, regardless of pa.autoPush" };
+        var dryRunOption = Cli.DryRunOption();
 
         var command = new Command("commit", "Commit changes to a feature branch and merge it into dev")
         {
-            branchOption, summaryOption, descriptionOption, allOption, pushOption, noPushOption,
+            branchOption, summaryOption, descriptionOption, allOption, pushOption, noPushOption, dryRunOption,
         };
         command.SetAction(parseResult => cli.Execute(() =>
         {
@@ -39,10 +40,12 @@ static class CommitCommand
                 }
             }
 
+            // A dry run plans with what is staged now (or everything, with --all) and stages nothing.
             var all = parseResult.GetValue(allOption);
-            if (all)
+            var dryRun = parseResult.GetValue(dryRunOption);
+            if (all && !dryRun)
                 git.Run("add", "-A");
-            else if (cli.Interactive)
+            else if (!all && !dryRun && cli.Interactive)
                 PickFiles(cli, git);
 
             var target = cli.Require(branch, "--branch", () => PickBranch(cli, git, config));
@@ -57,6 +60,8 @@ static class CommitCommand
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
             var request = new CommitRequest(target, summary, description, push);
+            if (dryRun)
+                return cli.PrintPlan(CommitOperation.Plan(git, config, request, stageAll: all));
 
             var sha = CommitOperation.Run(git, config, request, cli.Reporter);
             cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");

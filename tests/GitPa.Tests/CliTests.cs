@@ -66,6 +66,31 @@ public class CliTests
     }
 
     [Fact]
+    public void DryRuns_ChangeNothing()
+    {
+        using var repo = new TestRepo();
+        NewBranchOperation.Run(repo.Git, repo.Config, "feat/a", repo.Reporter);
+        TestRepo.Write(repo.Git, "README.md", "changed\n");
+        var refsBefore = repo.Git.Run("show-ref");
+
+        var commit = new TestConsole();
+        Assert.Equal(0, Run(repo, commit, "commit", "-a", "-b", "feat/a", "-m", "Dry summary", "--dry-run"));
+        var newBranch = new TestConsole();
+        Assert.Equal(0, Run(repo, newBranch, "new", "feat/b", "--dry-run"));
+        var sync = new TestConsole();
+        Assert.Equal(0, Run(repo, sync, "sync", "--dry-run"));
+
+        Assert.Contains("git add -A", commit.Output);
+        Assert.Contains("git commit --quiet -m \"Dry summary\"", commit.Output);
+        Assert.Contains("git merge --no-edit feat/a", commit.Output);
+        Assert.Contains("git branch --no-track feat/b origin/main", newBranch.Output);
+        Assert.Contains("git merge --no-edit origin/dev", sync.Output);
+        Assert.Equal(refsBefore, repo.Git.Run("show-ref"));
+        Assert.False(repo.Git.HasStagedChanges());
+        Assert.Equal("README.md", repo.Git.Run("diff", "--name-only"));
+    }
+
+    [Fact]
     public void New_FailsWithoutNameWhenNotInteractive()
     {
         using var repo = new TestRepo();

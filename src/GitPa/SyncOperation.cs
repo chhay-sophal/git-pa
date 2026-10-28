@@ -23,6 +23,19 @@ public static class SyncOperation
         return behind;
     }
 
+    /// <summary>Validates and returns the git commands <see cref="Run"/> would execute.</summary>
+    public static IReadOnlyList<string> Plan(GitRunner git, PaConfig config)
+    {
+        Validate(git, config);
+        return
+        [
+            GitRunner.Format("fetch", config.Remote, config.Dev),
+            "git stash push   (if you have uncommitted changes)",
+            GitRunner.Format("merge", "--no-edit", $"{config.Remote}/{config.Dev}") + "   (if behind)",
+            "git stash pop --index   (if you had uncommitted changes)",
+        ];
+    }
+
     static void Validate(GitRunner git, PaConfig config)
     {
         DevBranch.EnsureCheckedOut(git, config);
