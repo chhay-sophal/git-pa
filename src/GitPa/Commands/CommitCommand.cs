@@ -51,7 +51,7 @@ static class CommitCommand
             else if (!all && !dryRun && cli.Interactive)
                 PickFiles(cli, git);
 
-            var target = cli.Require(branch, "--branch", () => PickBranch(cli, git, config));
+            var target = cli.Require(branch, "--branch", () => Prompts.PickFeatureBranch(cli, git, config, "Target branch:"));
             summary = cli.Require(summary, "--summary",
                 () => cli.Console.Prompt(new TextPrompt<string>("Commit summary:")
                     .Validate(s => string.IsNullOrWhiteSpace(s)
@@ -106,16 +106,5 @@ static class CommitCommand
             lines.Add(line);
             question = "[grey]>[/]";
         }
-    }
-
-    static string PickBranch(Cli cli, GitRunner git, PaConfig config)
-    {
-        var branches = git.LocalBranches().Where(b => b != config.Main && b != config.Dev).ToList();
-        if (branches.Count == 0)
-            throw new GitPaException("There are no feature branches yet. Create one with: git pa new <name>");
-        return cli.Console.Prompt(new SelectionPrompt<string>()
-            .Title("Target branch:")
-            .PageSize(10)
-            .AddChoices(branches));
     }
 }

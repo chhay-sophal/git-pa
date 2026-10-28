@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace GitPa;
 
 public sealed record CommitRequest(string Target, string Summary, string? Description, bool Push);
@@ -19,7 +17,7 @@ public static class CommitOperation
         var target = request.Target;
         Validate(git, config, request);
         Fetch(git, config, target, reporter);
-        EnsureLocalBranch(git, config, target);
+        Branches.EnsureLocalFeature(git, config, target);
 
         // Merge the latest remote dev too, so the push afterwards isn't rejected.
         var incoming = new List<string> { target };
@@ -50,7 +48,7 @@ public static class CommitOperation
         if (!git.LocalBranchExists(target) && !git.RemoteBranchExists(remote, target))
             throw new GitPaException($"Branch '{target}' does not exist. Create it with: git pa new {target}");
 
-        var worktree = Path.GetRelativePath(git.WorkingDirectory, WorktreePath(git, target)).Replace('\\', '/');
+        var worktree = TempWorktree.DisplayPathFor(git, target);
         var hasRemote = git.RemoteExists(remote);
         var steps = new List<string>();
         if (stageAll)
@@ -96,24 +94,11 @@ public static class CommitOperation
             return;
 
         reporter.Step($"Fetching {target} and {config.Dev} from {config.Remote}");
-        // Fails harmlessly when the feature branch has never been pushed.
-        git.TryRun("fetch", "--quiet", config.Remote, target);
+        Branches.TryFetch(git, config, target);
         var dev = git.TryRun("fetch", "--quiet", config.Remote, config.Dev);
         if (!dev.Success)
             reporter.Warn($"Could not fetch {config.Remote}/{config.Dev}; using the last known version.\n{dev.Message}");
     }
-
-    static void EnsureLocalBranch(GitRunner git, PaConfig config, string target)
-    {
-        if (git.LocalBranchExists(target))
-            return;
-        if (!git.RemoteBranchExists(config.Remote, target))
-            throw new GitPaException($"Branch '{target}' does not exist. Create it with: git pa new {target}");
-        git.Run("branch", "--quiet", "--track", target, $"{config.Remote}/{target}");
-    }
-
-    static string WorktreePath(GitRunner git, string target) =>
-        Path.Combine(git.CommonDir(), "pa-worktrees", Regex.Replace(target, @"[^\w.-]", "_"));
 
     static string[] CommitArgs(CommitRequest request) =>
         string.IsNullOrWhiteSpace(request.Description)
@@ -123,57 +108,35 @@ public static class CommitOperation
     static string CommitInWorktree(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter)
     {
         var target = request.Target;
-        var path = WorktreePath(git, target);
-        var patch = path + ".patch";
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-        // Clean up after an earlier run that was interrupted.
-        git.TryRun("worktree", "prune");
-        if (Directory.Exists(path))
-        {
-            git.TryRun("worktree", "remove", "--force", path);
-            if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
-        }
+        var patch = TempWorktree.PathFor(git, target) + ".patch";
+        Directory.CreateDirectory(Path.GetDirectoryName(patch)!);
 
         // Explicit options so user diff settings (noprefix, external diff, textconv) can't break git apply.
         git.Run("diff", "--cached", "--binary", "--no-color", "--no-ext-diff", "--no-textconv",
             "--src-prefix=a/", "--dst-prefix=b/", $"--output={patch}");
 
-        reporter.Step($"Checking out {target} in a temporary worktree");
-        var add = git.TryRun("worktree", "add", "--quiet", path, target);
-        if (!add.Success)
-            throw new GitPaException(
-                $"Could not check out '{target}' in a temporary worktree. Is it checked out somewhere else?\n{add.Message}");
-
         try
         {
-            var worktree = new GitRunner(path);
+            reporter.Step($"Checking out {target} in a temporary worktree");
+            using var worktree = TempWorktree.Create(git, target, target);
 
             if (git.RemoteBranchExists(config.Remote, target))
-            {
-                var upstream = $"{config.Remote}/{target}";
-                var fastForward = worktree.TryRun("merge", "--ff-only", "--quiet", upstream);
-                if (!fastForward.Success)
-                    throw new GitPaException(
-                        $"'{target}' has diverged from {upstream}. Reconcile the two before committing.\n{fastForward.Message}");
-            }
+                worktree.FastForwardTo($"{config.Remote}/{target}");
 
-            var apply = worktree.TryRun("apply", "--3way", "--index", patch);
+            var apply = worktree.Git.TryRun("apply", "--3way", "--index", patch);
             if (!apply.Success)
                 throw new GitPaException(
                     $"Your staged changes don't apply cleanly to '{target}'. They probably depend on code that is " +
                     $"on {config.Dev} but not on {target}. Nothing was committed.\n{apply.Message}");
 
-            var commit = worktree.TryRun(CommitArgs(request));
+            var commit = worktree.Git.TryRun(CommitArgs(request));
             if (!commit.Success)
                 throw new GitPaException($"Committing to '{target}' failed. Nothing was committed.\n{commit.Message}");
 
-            return worktree.Run("rev-parse", "--short", "HEAD");
+            return worktree.Git.Run("rev-parse", "--short", "HEAD");
         }
         finally
         {
-            git.TryRun("worktree", "remove", "--force", path);
             File.Delete(patch);
         }
     }

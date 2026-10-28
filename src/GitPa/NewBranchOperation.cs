@@ -18,7 +18,7 @@ public static class NewBranchOperation
                 reporter.Warn($"Could not fetch {config.Remote}/{config.Main}; using the last known version.\n{fetch.Message}");
         }
 
-        var baseRef = BaseRef(git, config);
+        var baseRef = Branches.LatestMain(git, config);
         git.Run("branch", "--no-track", name, baseRef);
         return baseRef;
     }
@@ -30,7 +30,7 @@ public static class NewBranchOperation
         var steps = new List<string>();
         if (git.RemoteExists(config.Remote))
             steps.Add(GitRunner.Format("fetch", config.Remote, config.Main));
-        steps.Add(GitRunner.Format("branch", "--no-track", name, BaseRef(git, config)));
+        steps.Add(GitRunner.Format("branch", "--no-track", name, Branches.LatestMain(git, config)));
         return steps;
     }
 
@@ -40,14 +40,5 @@ public static class NewBranchOperation
             throw new GitPaException($"'{name}' is not a valid branch name.");
         if (git.LocalBranchExists(name))
             throw new GitPaException($"Branch '{name}' already exists.");
-    }
-
-    static string BaseRef(GitRunner git, PaConfig config)
-    {
-        if (git.RemoteBranchExists(config.Remote, config.Main))
-            return $"{config.Remote}/{config.Main}";
-        if (git.LocalBranchExists(config.Main))
-            return config.Main;
-        throw new GitPaException($"Main branch '{config.Main}' was not found locally or on {config.Remote}.");
     }
 }

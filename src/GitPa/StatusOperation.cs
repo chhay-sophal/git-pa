@@ -15,9 +15,7 @@ public static class StatusOperation
     public static RepoStatus Run(GitRunner git, PaConfig config)
     {
         var remote = config.Remote;
-        var mainRef = git.RemoteBranchExists(remote, config.Main) ? $"{remote}/{config.Main}"
-            : git.LocalBranchExists(config.Main) ? config.Main
-            : throw new GitPaException($"Main branch '{config.Main}' was not found locally or on {remote}.");
+        var mainRef = Branches.LatestMain(git, config);
         var devUpstream = git.RemoteBranchExists(remote, config.Dev) ? $"{remote}/{config.Dev}" : null;
         var (devToPull, devToPush) = devUpstream is null ? (0, 0) : Count(git, devUpstream, config.Dev);
 
