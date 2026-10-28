@@ -62,7 +62,8 @@ static class ResetDevCommand
             cli.Success($"Rebuilt {config.Dev} and pushed it. Your old {config.Dev} is saved as {backup}.");
             cli.Console.MarkupLine(
                 $"Teammates: the next [bold]git pa sync[/] or [bold]git pa commit[/] moves their {Markup.Escape(config.Dev)} " +
-                "onto the new one. Plain [bold]git pull[/] would merge the old history back in, so they shouldn't use it.");
+                "onto the new one. They should run [bold]git pa sync[/] once before using plain [bold]git pull[/] on " +
+                $"{Markup.Escape(config.Dev)} again; pulling first would merge the old history back in.");
             return 0;
         }));
         return command;

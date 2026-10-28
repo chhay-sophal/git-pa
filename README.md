@@ -123,8 +123,14 @@ kept as `refs/pa-backup/dev-<date>`.
 This replaces dev for the whole team, so tell your teammates first. Their next `git pa sync`
 or `git pa commit` notices the reset and moves their dev onto the new one, keeping their
 uncommitted changes and backing up their old dev (and listing any commits that were only on
-it). They should not use plain `git pull` on dev afterwards: it would merge the old history
-back in.
+it).
+
+Each teammate should run `git pa sync` once before using plain `git pull` on dev again. Until
+then their dev still has the old history, and `git pull` would merge it back in. After that
+first sync, `git pull` is safe as usual. `git pa status --fetch` tells them when they still
+need to sync. If someone pulled too early and hasn't pushed, `git reset --hard origin/dev`
+undoes it (stash uncommitted changes first). If they already pushed, run `git pa reset-dev`
+again.
 
 Non-interactively, pick branches with `-b` (repeatable) and confirm with `--yes`.
 
