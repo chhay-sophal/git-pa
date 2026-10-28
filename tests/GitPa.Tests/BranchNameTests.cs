@@ -6,6 +6,7 @@ public class BranchNameTests
     [InlineData("feature", "1234", "Add login page", "feature/1234-add-login-page")]
     [InlineData("feature", "1234", null, "feature/1234")]
     [InlineData("bugfix", "PA-77", "  Null   check! ", "bugfix/PA-77-null-check")]
+    [InlineData("bugfix", " pa-77 ", "Null check", "bugfix/PA-77-null-check")]
     [InlineData("hotfix", "88", "", "hotfix/88")]
     [InlineData("refactor", "9", "Split service (part 2)", "refactor/9-split-service-part-2")]
     [InlineData("chore", null, "Update NuGet packages", "chore/update-nuget-packages")]

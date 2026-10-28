@@ -29,7 +29,7 @@ public static class BranchName
         }
         else
         {
-            ticket = ticket?.Trim() ?? "";
+            ticket = ticket?.Trim().ToUpperInvariant() ?? "";
             if (ValidateTicket(ticket) is { } error)
                 throw new GitPaException(error);
             name = slug.Length == 0 ? $"{type}/{ticket}" : $"{type}/{ticket}-{slug}";

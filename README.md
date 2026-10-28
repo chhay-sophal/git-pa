@@ -46,8 +46,8 @@ You pick the branch type and enter the details; the name is built for you:
 | `chore` | Title | `chore/update-nuget-packages` |
 
 The title is lowercased, spaces become `-`, and characters git or shells dislike are dropped.
-Ticket numbers keep their case and may contain letters, digits and dashes (`PA-77`). Branch
-names are limited to 60 characters.
+Ticket numbers may contain letters, digits and dashes, and are uppercased (`pa-77` becomes
+`PA-77`). Branch names are limited to 60 characters.
 
 Without prompts: `git pa new -t feature --ticket 1234 --title "Add login page"`. To use an
 exact name instead, pass it directly: `git pa new my/branch-name`.
