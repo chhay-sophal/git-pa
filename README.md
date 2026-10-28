@@ -30,7 +30,7 @@ git pa init --main main --dev dev
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
-`new`, `commit`, `sync`, `update`, `clean` and `reset-dev` accept `--dry-run` to show the git commands they would run
+`new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` accept `--dry-run` to show the git commands they would run
 without changing anything.
 
 ### `git pa new`
@@ -151,6 +151,51 @@ undoes it (stash uncommitted changes first). If they already pushed, run `git pa
 again.
 
 Non-interactively, pick branches with `-b` (repeatable) and confirm with `--yes`.
+
+### `git pa deploy [assembly]`
+
+Builds a plug-in assembly and pushes it to the dev environment in one step:
+
+1. `git pa sync`, so the build contains everyone's pushed work (skip with `--skip-sync`)
+2. `nuget restore` for the solution, if one is configured
+3. A Release rebuild with Visual Studio's MSBuild (found automatically with `vswhere`)
+4. `pac plugin push` of the built assembly, always to the configured environment, whichever
+   environment `pac` is currently signed in to
+
+It asks for confirmation first (`--yes` skips it) and notes when your uncommitted changes are
+part of the build. `--dry-run` shows the exact commands. With several assemblies, pick one by
+name or from a list.
+
+What to deploy is described in `git-pa.json` at the repository root. Commit it, since it is the
+same for the whole team:
+
+```json
+{
+  "deploy": {
+    "environment": "https://contoso-dev.crm.dynamics.com",
+    "configuration": "Release",
+    "solution": "Plugins.sln",
+    "assemblies": [
+      {
+        "project": "Plugins/Plugins.csproj",
+        "file": "Plugins/bin/Release/ILMerge/Plugins.dll",
+        "pluginId": "00000000-0000-0000-0000-000000000000"
+      }
+    ]
+  }
+}
+```
+
+- `file` is the assembly to upload. With ILMerge, that's the merged one, not the plain build output.
+- `pluginId` is the plug-in assembly's ID in Dataverse, not the Visual Studio project GUID. Open
+  `<environment>/api/data/v9.2/pluginassemblies?$select=name,pluginassemblyid` in a signed-in
+  browser to look it up.
+- `name` (optional) defaults to the project file name; `configuration` defaults to `Release`;
+  `solution` is optional; set `msbuild` to MSBuild.exe's path if it isn't found automatically.
+
+Requires the [Power Platform CLI](https://aka.ms/PowerPlatformCLI), signed in with access to
+the environment (`pac auth create`). `pac plugin push` replaces the assembly's code; new plug-in
+classes or steps still need registering with the Plugin Registration Tool.
 
 ### Update notice
 
