@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          # 10.0 SDK builds the .slnx solution; the 8.0 runtime runs the net8.0 tests.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: dotnet test -c Release
+
+      - run: dotnet pack src/GitPa -c Release
