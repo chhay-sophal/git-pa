@@ -19,8 +19,9 @@ static class SyncCommand
             if (parseResult.GetValue(dryRunOption))
                 return cli.PrintPlan(SyncOperation.Plan(git, config));
 
-            var pulled = SyncOperation.Run(git, config, cli.Reporter);
-            cli.Success(pulled == 0
+            var (pulled, resetBackup) = SyncOperation.Run(git, config, cli.Reporter);
+            cli.Success(resetBackup is not null ? $"Moved {config.Dev} onto the rebuilt {config.Remote}/{config.Dev}."
+                : pulled == 0
                 ? $"{config.Dev} is already up to date with {config.Remote}/{config.Dev}."
                 : $"Pulled {pulled} commit{(pulled == 1 ? "" : "s")} from {config.Remote}/{config.Dev}.");
             return 0;

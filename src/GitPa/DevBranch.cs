@@ -25,15 +25,23 @@ public static class DevBranch
             throw new GitPaException("A merge is in progress. Finish it with git commit, or cancel it with git merge --abort.");
     }
 
-    /// <summary>Throws if merging <paramref name="refs"/> would overwrite untracked files.</summary>
-    public static void CheckUntrackedCollisions(GitRunner git, PaConfig config, IEnumerable<string> refs)
+    /// <summary>Marks the first commit of a dev branch rebuilt by reset-dev, so teammates' git-pa can recognize it.</summary>
+    public const string ResetTrailer = "Git-Pa-Reset";
+
+    /// <summary>
+    /// Throws if merging <paramref name="refs"/> (or, with <paramref name="replacing"/>, switching HEAD to them)
+    /// would overwrite untracked files.
+    /// </summary>
+    public static void CheckUntrackedCollisions(GitRunner git, PaConfig config, IEnumerable<string> refs, bool replacing = false)
     {
         var untracked = git.RunNul("ls-files", "--others", "--exclude-standard", "-z").ToHashSet();
         if (untracked.Count == 0)
             return;
 
         var collisions = refs
-            .SelectMany(r => git.RunNul("diff", "--name-only", "-z", "--no-renames", "--diff-filter=A", $"HEAD...{r}"))
+            .SelectMany(r => git.RunNul(replacing
+                ? ["diff", "--name-only", "-z", "--no-renames", "--diff-filter=A", "HEAD", r]
+                : ["diff", "--name-only", "-z", "--no-renames", "--diff-filter=A", $"HEAD...{r}"]))
             .Where(untracked.Contains)
             .Distinct()
             .ToList();
@@ -92,12 +100,66 @@ public static class DevBranch
 
         if (!dirty)
             return;
-        if (!keepInStash)
-        {
+        if (keepInStash)
+            RestoreStash(git, restore, reporter);
+        else
             git.Run("stash", "drop", "--quiet");
-            return;
-        }
+    }
 
+    /// <summary>True when the remote dev was rebuilt by reset-dev since this dev last synced with it.</summary>
+    public static bool WasReset(GitRunner git, string upstream) =>
+        !git.Succeeds("merge-base", "--is-ancestor", "HEAD", upstream)
+        && git.Run("log", "--format=%H", $"--grep=^{ResetTrailer}:", $"HEAD..{upstream}").Length > 0;
+
+    /// <summary>Commits on the current dev that are on no other branch, local or remote.</summary>
+    public static IReadOnlyList<string> LocalOnlyCommits(GitRunner git, PaConfig config, string newTip)
+    {
+        var others = git.LocalBranches().Where(b => b != config.Dev).Select(b => $"refs/heads/{b}");
+        var log = git.Run(["log", "--no-merges", "--format=%h %s", "HEAD", "--not", newTip, "--remotes", .. others]);
+        return log.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    /// <summary>
+    /// Points the current dev at <paramref name="newTip"/>, keeping uncommitted changes, and saves the
+    /// old dev under refs/pa-backup. Returns the backup ref.
+    /// </summary>
+    public static string MoveTo(GitRunner git, PaConfig config, string newTip, IReporter reporter)
+    {
+        CheckUntrackedCollisions(git, config, [newTip], replacing: true);
+        var backup = $"refs/pa-backup/{config.Dev}-{DateTime.Now:yyyyMMdd-HHmmss}";
+        git.Run("update-ref", backup, "HEAD");
+
+        var dirty = git.Run("status", "--porcelain", "--untracked-files=no").Length > 0;
+        if (dirty)
+            git.Run("stash", "push", "--quiet", "-m", "git-pa: work in progress");
+        git.Run("reset", "--quiet", "--hard", newTip);
+        if (dirty)
+            RestoreStash(git, Restore.Everything, reporter);
+        return backup;
+    }
+
+    /// <summary>
+    /// If the remote dev was rebuilt by reset-dev, moves the local dev onto it.
+    /// Returns the backup ref of the old dev, or null when nothing was reset.
+    /// </summary>
+    public static string? FollowReset(GitRunner git, PaConfig config, IReporter reporter)
+    {
+        var upstream = $"{config.Remote}/{config.Dev}";
+        if (!git.RemoteBranchExists(config.Remote, config.Dev) || !WasReset(git, upstream))
+            return null;
+
+        var lost = LocalOnlyCommits(git, config, upstream);
+        var backup = MoveTo(git, config, upstream, reporter);
+        reporter.Warn(
+            $"{upstream} was rebuilt with git pa reset-dev, so your {config.Dev} now matches it. " +
+            $"The old one is saved as {backup}." +
+            (lost.Count == 0 ? "" :
+                $"\nThese commits were only on your old {config.Dev} and are not in the new one:\n  {string.Join("\n  ", lost)}"));
+        return backup;
+    }
+
+    static void RestoreStash(GitRunner git, Restore restore, IReporter reporter)
+    {
         var apply = restore == Restore.Everything
             ? git.TryRun("stash", "apply", "--index")
             : git.TryRun("stash", "apply");

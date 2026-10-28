@@ -6,8 +6,10 @@ public sealed record BranchStatus(
     string Name, string LastCommit, int AheadOfMain, int BehindMain, int NotInDev, int? ToPush, int? ToPull);
 
 /// <param name="DevUpstream">The remote dev branch, or null when there is none.</param>
+/// <param name="DevWasReset">Whether the remote dev was rebuilt by reset-dev since the local dev last synced.</param>
 public sealed record RepoStatus(
-    string MainRef, string Dev, string? DevUpstream, int DevToPush, int DevToPull, IReadOnlyList<BranchStatus> Branches);
+    string MainRef, string Dev, string? DevUpstream, int DevToPush, int DevToPull, bool DevWasReset,
+    IReadOnlyList<BranchStatus> Branches);
 
 /// <summary>Reports how each feature branch relates to main, dev, and its remote copy, as of the last fetch.</summary>
 public static class StatusOperation
@@ -38,7 +40,8 @@ public static class StatusOperation
             })
             .ToList();
 
-        return new RepoStatus(mainRef, config.Dev, devUpstream, devToPush, devToPull, branches);
+        var devWasReset = devUpstream is not null && DevBranch.WasReset(git, devUpstream);
+        return new RepoStatus(mainRef, config.Dev, devUpstream, devToPush, devToPull, devWasReset, branches);
     }
 
     /// <summary>Counts commits only on <paramref name="left"/> and only on <paramref name="right"/>.</summary>

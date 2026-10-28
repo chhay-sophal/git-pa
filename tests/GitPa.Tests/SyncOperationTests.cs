@@ -21,7 +21,7 @@ public class SyncOperationTests
         repo.Git.Run("add", "staged.txt");
         TestRepo.Write(repo.Git, "README.md", "unstaged\n");
 
-        var pulled = SyncOperation.Run(repo.Git, repo.Config, repo.Reporter);
+        var pulled = SyncOperation.Run(repo.Git, repo.Config, repo.Reporter).Pulled;
 
         Assert.Equal(1, pulled);
         Assert.Equal("teammate\n", TestRepo.Read(repo.Git, "teammate.txt"));
@@ -36,7 +36,7 @@ public class SyncOperationTests
         using var repo = new TestRepo();
         var before = repo.Git.Run("rev-parse", "HEAD");
 
-        Assert.Equal(0, SyncOperation.Run(repo.Git, repo.Config, repo.Reporter));
+        Assert.Equal(0, SyncOperation.Run(repo.Git, repo.Config, repo.Reporter).Pulled);
         Assert.Equal(before, repo.Git.Run("rev-parse", "HEAD"));
     }
 

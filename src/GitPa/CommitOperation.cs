@@ -17,6 +17,7 @@ public static class CommitOperation
         var target = request.Target;
         Validate(git, config, request);
         Fetch(git, config, target, reporter);
+        DevBranch.FollowReset(git, config, reporter);
         Branches.EnsureLocalFeature(git, config, target);
 
         // Merge the latest remote dev too, so the push afterwards isn't rejected.

@@ -1,10 +1,13 @@
 namespace GitPa;
 
+/// <param name="Pulled">Commits merged in from the remote dev.</param>
+/// <param name="ResetBackup">When the remote dev was rebuilt by reset-dev, the backup ref of the old local dev.</param>
+public sealed record SyncResult(int Pulled, string? ResetBackup);
+
 /// <summary>Brings the latest remote dev into the local dev branch, keeping uncommitted changes.</summary>
 public static class SyncOperation
 {
-    /// <summary>Returns the number of commits pulled in.</summary>
-    public static int Run(GitRunner git, PaConfig config, IReporter reporter)
+    public static SyncResult Run(GitRunner git, PaConfig config, IReporter reporter)
     {
         Validate(git, config);
         var upstream = $"{config.Remote}/{config.Dev}";
@@ -14,13 +17,16 @@ public static class SyncOperation
         if (!fetch.Success)
             throw new GitPaException($"Could not fetch {upstream}:\n{fetch.Message}");
 
+        if (DevBranch.FollowReset(git, config, reporter) is { } backup)
+            return new SyncResult(0, backup);
+
         var behind = int.Parse(git.Run("rev-list", "--count", $"HEAD..{upstream}"));
         if (behind == 0)
-            return 0;
+            return new SyncResult(0, null);
 
         DevBranch.CheckUntrackedCollisions(git, config, [upstream]);
         DevBranch.Merge(git, [upstream], DevBranch.Restore.Everything, "", reporter);
-        return behind;
+        return new SyncResult(behind, null);
     }
 
     /// <summary>Validates and returns the git commands <see cref="Run"/> would execute.</summary>

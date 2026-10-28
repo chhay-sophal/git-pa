@@ -58,6 +58,8 @@ static class StatusCommand
     {
         if (status.DevUpstream is null)
             return "no remote copy";
+        if (status.DevWasReset)
+            return $"{status.DevUpstream} was rebuilt with reset-dev, run git pa sync";
         var parts = new List<string>();
         if (status.DevToPull > 0)
             parts.Add($"{Plural(status.DevToPull, "commit")} behind {status.DevUpstream}, run git pa sync");
