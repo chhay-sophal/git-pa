@@ -33,10 +33,24 @@ Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
 `new`, `commit`, `sync`, `update`, `clean` and `reset-dev` accept `--dry-run` to show the git commands they would run
 without changing anything.
 
-### `git pa new [name]`
+### `git pa new`
 
-Fetches the latest main from the remote and creates `name` from it. You stay on dev, and
-uncommitted changes are untouched.
+Creates a branch from the latest main on the remote. You stay on dev, and uncommitted changes
+are untouched.
+
+You pick the branch type and enter the details; the name is built for you:
+
+| Type | Asks for | Branch name |
+| --- | --- | --- |
+| `bugfix`, `hotfix`, `feature`, `refactor` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
+| `chore` | Title | `chore/update-nuget-packages` |
+
+The title is lowercased, spaces become `-`, and characters git or shells dislike are dropped.
+Ticket numbers keep their case and may contain letters, digits and dashes (`PA-77`). Branch
+names are limited to 60 characters.
+
+Without prompts: `git pa new -t feature --ticket 1234 --title "Add login page"`. To use an
+exact name instead, pass it directly: `git pa new my/branch-name`.
 
 ### `git pa commit`
 

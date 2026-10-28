@@ -16,16 +16,45 @@ public class CliTests
     }
 
     [Fact]
-    public void New_PromptsForBranchName()
+    public void New_PromptsForTypeTicketAndTitle()
     {
         using var repo = new TestRepo();
         var console = InteractiveConsole();
-        console.Input.PushTextWithEnter("feat/prompted");
+        console.Input.PushKey(ConsoleKey.DownArrow); // bugfix -> hotfix
+        console.Input.PushKey(ConsoleKey.DownArrow); // hotfix -> feature
+        console.Input.PushKey(ConsoleKey.Enter);
+        console.Input.PushTextWithEnter("1234");
+        console.Input.PushTextWithEnter("Add login page");
 
         var exitCode = Run(repo, console, "new");
 
         Assert.Equal(0, exitCode);
-        Assert.True(repo.Git.LocalBranchExists("feat/prompted"));
+        Assert.True(repo.Git.LocalBranchExists("feature/1234-add-login-page"));
+    }
+
+    [Fact]
+    public void New_ChorePromptsForTitleOnly()
+    {
+        using var repo = new TestRepo();
+        var console = InteractiveConsole();
+        console.Input.PushTextWithEnter("Update packages");
+
+        var exitCode = Run(repo, console, "new", "--type", "chore");
+
+        Assert.Equal(0, exitCode);
+        Assert.True(repo.Git.LocalBranchExists("chore/update-packages"));
+    }
+
+    [Fact]
+    public void New_BuildsNameFromOptions_WhenNotInteractive()
+    {
+        using var repo = new TestRepo();
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "bugfix", "--ticket", "PA-77", "--title", "Null check"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "exact/name"));
+
+        Assert.True(repo.Git.LocalBranchExists("bugfix/PA-77-null-check"));
+        Assert.True(repo.Git.LocalBranchExists("exact/name"));
     }
 
     [Fact]
@@ -162,6 +191,6 @@ public class CliTests
         var exitCode = Run(repo, console, "new");
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("Missing branch name", console.Output);
+        Assert.Contains("Missing --type (or a branch name)", console.Output);
     }
 }
