@@ -15,8 +15,10 @@ your working tree ever switching branches.
 ## Install
 
 ```sh
-dotnet tool install -g GitPa --add-source <folder or feed with the .nupkg>
+dotnet tool install -g GitPa
 ```
+
+Update later with `dotnet tool update -g GitPa`.
 
 Then, once per repository:
 
@@ -82,3 +84,20 @@ dotnet test
 dotnet pack src/GitPa -c Release      # -> artifacts/GitPa.<version>.nupkg
 dotnet tool install -g GitPa --add-source ./artifacts
 ```
+
+## Releasing
+
+Push a version tag. The release workflow tests, packs that version, publishes it to nuget.org
+and creates a GitHub release:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+One-time setup for publishing with nuget.org trusted publishing (no stored API key):
+
+1. On nuget.org, open your account's **Trusted Publishing** page and add a policy for
+   repository owner `chhay-sophal`, repository `git-pa`, workflow file `release.yml`.
+2. In the GitHub repository, add a secret `NUGET_USER` containing your nuget.org username
+   (Settings → Secrets and variables → Actions).
