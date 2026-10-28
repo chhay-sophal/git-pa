@@ -27,14 +27,21 @@ public sealed class GitRunner(string workingDirectory)
     }
 
     /// <summary>Runs git and captures its trimmed output, without throwing on failure.</summary>
-    public GitResult TryRun(params string[] args)
+    public GitResult TryRun(params string[] args) => Capture(args, trim: true);
+
+    /// <summary>Runs a git command that prints NUL-separated (-z) output and returns the entries.</summary>
+    public IReadOnlyList<string> RunNul(params string[] args)
     {
-        using var process = Start(args, capture: true);
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        process.WaitForExit();
-        return new GitResult(process.ExitCode, output.Result.Trim(), error.Result.Trim());
+        var result = Capture(args, trim: false);
+        if (!result.Success)
+            throw new GitPaException($"git {string.Join(' ', args)} failed:\n{result.Message.Trim()}");
+        return result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
     }
+
+    /// <summary>Formats a git command for display, quoting arguments that need it.</summary>
+    public static string Format(params string[] args) =>
+        "git " + string.Join(' ', args.Select(a =>
+            a.Length > 0 && !a.Any(c => char.IsWhiteSpace(c) || c is '"' or '\'') ? a : $"\"{a.Replace("\"", "\\\"")}\""));
 
     /// <summary>Runs git and returns its trimmed output, throwing if it fails.</summary>
     public string Run(params string[] args)
@@ -82,6 +89,17 @@ public sealed class GitRunner(string workingDirectory)
     /// <summary>The .git directory shared by all worktrees of this repository.</summary>
     public string CommonDir() =>
         Path.GetFullPath(Path.Combine(WorkingDirectory, Run("rev-parse", "--git-common-dir")));
+
+    GitResult Capture(string[] args, bool trim)
+    {
+        using var process = Start(args, capture: true);
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        process.WaitForExit();
+        return trim
+            ? new GitResult(process.ExitCode, output.Result.Trim(), error.Result.Trim())
+            : new GitResult(process.ExitCode, output.Result, error.Result);
+    }
 
     Process Start(string[] args, bool capture)
     {
