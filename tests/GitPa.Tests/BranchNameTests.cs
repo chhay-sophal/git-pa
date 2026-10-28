@@ -37,6 +37,29 @@ public class BranchNameTests
             BranchName.Build("feature", "1234", title[..(BranchName.MaxLength - "feature/1234-".Length)]).Length);
     }
 
+    [Theory]
+    [InlineData("feature/PA-77-add-login", "PA-77")]
+    [InlineData("bugfix/1234", "1234")]
+    [InlineData("hotfix/1234-2fa-fix", "1234")]
+    [InlineData("refactor/AB-12-C3-split", "AB-12-C3")]
+    [InlineData("chore/update-packages", null)]
+    [InlineData("feat/login", null)]
+    [InlineData("feature/no-ticket-here", null)]
+    public void FindsTicketInBranchName(string branch, string? ticket)
+    {
+        Assert.Equal(ticket, BranchName.TicketFrom(branch));
+    }
+
+    [Theory]
+    [InlineData("feature/PA-77-add-login", "Add login page", "PA-77: Add login page")]
+    [InlineData("feature/PA-77-add-login", "PA-77 Add login page", "PA-77 Add login page")]
+    [InlineData("feature/PA-77-add-login", "pa-77: add login", "pa-77: add login")]
+    [InlineData("chore/update-packages", "Update packages", "Update packages")]
+    public void PrefixesSummaryWithTicket(string branch, string summary, string expected)
+    {
+        Assert.Equal(expected, BranchName.WithTicketPrefix(branch, summary));
+    }
+
     [Fact]
     public void ProducesNamesGitAccepts()
     {
