@@ -161,12 +161,18 @@ Builds a plug-in assembly and pushes it to the dev environment in one step:
 1. `git pa sync`, so the build contains everyone's pushed work (skip with `--skip-sync`)
 2. `nuget restore` for the solution, if one is configured
 3. A Release rebuild with Visual Studio's MSBuild (found automatically with `vswhere`)
-4. `pac plugin push` of the built assembly, always to the configured environment, whichever
+4. A check of the plug-in classes in the build against the ones registered in Dataverse
+   (`pac org fetch`). If a registered class is missing from the build, it stops before pushing,
+   because the push would break that class's registered steps.
+5. `pac plugin push` of the built assembly, always to the configured environment, whichever
    environment `pac` is currently signed in to
+6. If the build has new plug-in classes, it checks again and tells you whether the push
+   registered them or you still need to "Update" the assembly in the Plugin Registration Tool.
+   Either way, new classes only run once their steps are registered there.
 
 It asks for confirmation first (`--yes` skips it) and notes when your uncommitted changes are
-part of the build. `--dry-run` shows the exact commands. With several assemblies, pick one by
-name or from a list.
+part of the build. `--dry-run` shows the exact commands and compares the last build's plug-in
+classes with the registered ones. With several assemblies, pick one by name or from a list.
 
 What to deploy is described in `git-pa.json` at the repository root. Commit it, since it is the
 same for the whole team:

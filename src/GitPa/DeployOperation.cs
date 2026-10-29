@@ -13,6 +13,7 @@ public static class DeployOperation
         if (deploy.Solution is not null)
             steps.Add(Format(tools.NuGet ?? "nuget.exe (not found)", RestoreArgs(deploy)));
         steps.Add(Format(tools.MSBuild ?? "MSBuild.exe (not found)", BuildArgs(deploy, assembly)));
+        steps.Add("compare the built plug-in classes with the registered ones (pac org fetch); stop if any registered class is missing");
         steps.Add(Format(tools.Pac ?? "pac (not found)", PushArgs(deploy, assembly)));
         return steps;
     }
@@ -56,10 +57,77 @@ public static class DeployOperation
             throw new GitPaException(
                 $"The build didn't produce {assembly.File}. Check its \"file\" path in {DeployConfig.FileName}. Nothing was deployed.");
 
+        reporter.Step($"Comparing plug-in classes with the ones registered in {deploy.Environment}");
+        var check = CheckClasses(git, deploy, assembly, pac, runner);
+        if (check.Registered is null)
+            reporter.Warn("Couldn't read the registered plug-in classes, so new or removed classes weren't checked.");
+        if (check.Missing.Count > 0)
+            throw new GitPaException(
+                $"These classes are registered for {assembly.Name} in {deploy.Environment} but are not in this build:\n" +
+                $"  {string.Join("\n  ", check.Missing)}\n" +
+                "Pushing would break their registered steps, so nothing was deployed. If you removed or renamed them on " +
+                "purpose, unregister them (and their steps) in the Plugin Registration Tool first. Otherwise, make sure " +
+                $"your {config.Dev} has everyone's work (git pa sync).");
+
         reporter.Step($"Pushing {assembly.Name} to {deploy.Environment}");
         if (runner.Run(pac, PushArgs(deploy, assembly), root) != 0)
             throw new GitPaException(
                 $"pac plugin push failed. Check that pac is signed in with access to {deploy.Environment} (pac auth list).");
+
+        if (check.New.Count > 0)
+            ReportNewClasses(deploy, assembly, check.New, QueryRegistered(git, deploy, assembly, pac, runner), reporter);
+    }
+
+    /// <param name="Registered">Classes registered in Dataverse, or null when they couldn't be read.</param>
+    public sealed record ClassCheck(IReadOnlySet<string> Built, IReadOnlySet<string>? Registered)
+    {
+        /// <summary>Registered classes missing from the build.</summary>
+        public IReadOnlyList<string> Missing => Registered is null ? [] : Registered.Except(Built).Order().ToList();
+
+        /// <summary>Classes in the build that aren't registered yet.</summary>
+        public IReadOnlyList<string> New => Registered is null ? [] : Built.Except(Registered).Order().ToList();
+    }
+
+    /// <summary>Compares the classes in the built assembly with the plug-in types registered in Dataverse.</summary>
+    public static ClassCheck CheckClasses(GitRunner git, DeployConfig deploy, DeployAssembly assembly, string pac, IToolRunner runner) =>
+        new(PluginClasses.Read(DeployConfig.Resolve(git.WorkingDirectory, assembly.File)),
+            QueryRegistered(git, deploy, assembly, pac, runner));
+
+    static void ReportNewClasses(DeployConfig deploy, DeployAssembly assembly, IReadOnlyList<string> added,
+        IReadOnlySet<string>? registeredNow, IReporter reporter)
+    {
+        var registered = registeredNow is null ? [] : added.Where(registeredNow.Contains).ToList();
+        var unregistered = registeredNow is null ? [] : added.Except(registered).ToList();
+        if (registered.Count > 0)
+            reporter.Warn(
+                $"New classes, now registered by the push:\n  {string.Join("\n  ", registered)}\n" +
+                "They don't run until you register their steps in the Plugin Registration Tool.");
+        if (unregistered.Count > 0 || registeredNow is null)
+            reporter.Warn(
+                $"New classes that are not registered yet:\n  {string.Join("\n  ", registeredNow is null ? added : unregistered)}\n" +
+                $"In the Plugin Registration Tool, select {assembly.Name}, choose Update, tick them, and register their steps.");
+    }
+
+    /// <summary>The plug-in types registered for the assembly, read with pac org fetch; null if that fails.</summary>
+    static IReadOnlySet<string>? QueryRegistered(GitRunner git, DeployConfig deploy, DeployAssembly assembly, string pac, IToolRunner runner)
+    {
+        var fetch = "<fetch><entity name='plugintype'><attribute name='typename'/><filter>" +
+            $"<condition attribute='pluginassemblyid' operator='eq' value='{assembly.PluginId}'/></filter></entity></fetch>";
+        var result = runner.Capture(pac, ["org", "fetch", "--environment", deploy.Environment, "--xml", fetch], git.WorkingDirectory);
+        if (result.ExitCode != 0)
+            return null;
+
+        // pac prints a table: some connection lines, a header starting with "typename", then one row per type.
+        var lines = result.Output.Split('\n', StringSplitOptions.TrimEntries);
+        var header = Array.FindIndex(lines, l => l.StartsWith("typename", StringComparison.OrdinalIgnoreCase));
+        if (header < 0)
+            return lines.Any(l => l.Contains("No records", StringComparison.OrdinalIgnoreCase))
+                ? new HashSet<string>()
+                : null;
+        return lines.Skip(header + 1)
+            .Where(l => l.Length > 0)
+            .Select(l => l.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0])
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     static string[] RestoreArgs(DeployConfig deploy) => ["restore", deploy.Solution!];

@@ -38,7 +38,11 @@ static class DeployCommand
             var tools = findTools(deploy);
             var sync = !parseResult.GetValue(skipSyncOption);
             if (parseResult.GetValue(dryRunOption))
-                return cli.PrintPlan(DeployOperation.Plan(git, config, deploy, assembly, tools, sync));
+            {
+                cli.PrintPlan(DeployOperation.Plan(git, config, deploy, assembly, tools, sync));
+                PreviewClassCheck(cli, git, deploy, assembly, tools, runner);
+                return 0;
+            }
 
             cli.Console.MarkupLine($"Deploy [bold]{Markup.Escape(assembly.Name)}[/] to [bold]{Markup.Escape(deploy.Environment)}[/]");
             if (git.Run("status", "--porcelain").Length > 0)
@@ -61,5 +65,27 @@ static class DeployCommand
             return 0;
         }));
         return command;
+    }
+
+    /// <summary>For a dry run: compares the last build (if any) with the registered classes. Read-only.</summary>
+    static void PreviewClassCheck(Cli cli, GitRunner git, DeployConfig deploy, DeployAssembly assembly, DeployTools tools, IToolRunner runner)
+    {
+        if (tools.Pac is null || !File.Exists(DeployConfig.Resolve(git.WorkingDirectory, assembly.File)))
+            return;
+
+        var check = DeployOperation.CheckClasses(git, deploy, assembly, tools.Pac, runner);
+        if (check.Registered is null)
+        {
+            cli.Reporter.Warn("Couldn't read the registered plug-in classes from Dataverse.");
+            return;
+        }
+        cli.Console.MarkupLine(
+            $"Last build has {check.Built.Count} plug-in classes; {check.Registered.Count} are registered in {Markup.Escape(deploy.Environment)}.");
+        if (check.Missing.Count > 0)
+            cli.Console.MarkupLine($"[red]Registered but missing from the build:[/] {Markup.Escape(string.Join(", ", check.Missing))}");
+        if (check.New.Count > 0)
+            cli.Console.MarkupLine($"[yellow]New, not registered yet:[/] {Markup.Escape(string.Join(", ", check.New))}");
+        if (check.Missing.Count == 0 && check.New.Count == 0)
+            cli.Console.MarkupLine("[green]The build and the registration match.[/]");
     }
 }

@@ -92,6 +92,10 @@ merging and deploying for you, without your working folder ever leaving dev.
 - Supports ILMerge projects: pushes the merged assembly.
 - Several assemblies per repository, deployed separately by name (or picked from a list).
 - Always pushes to the environment in `git-pa.json`, whichever environment `pac` is signed in to.
+- **Plug-in class check:** compares the plug-in and workflow-activity classes in the build with
+  the ones registered in Dataverse. A registered class missing from the build stops the deploy
+  before pushing. New classes are reported after the push, with whether they still need
+  registering in the Plugin Registration Tool.
 - Asks before deploying (`--yes` skips), mentions when uncommitted changes are included, and
   refuses to push if the build failed or didn't produce a fresh assembly.
 - Configured once per repository in a committed `git-pa.json`.
@@ -107,6 +111,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | Push fails | Keeps the work locally and prints the command to retry |
 | Teammate pushed to dev during `reset-dev` | The force-push is refused; nothing changes |
 | Build fails during `deploy` | Nothing is pushed to the environment |
+| A registered plug-in class is missing from the build | `deploy` stops before pushing and names the class |
 | Unsure what a command will do | `--dry-run` on `new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` prints the exact commands |
 
 ## Configuration

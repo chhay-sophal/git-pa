@@ -3,12 +3,21 @@ using Spectre.Console.Testing;
 
 namespace GitPa.Tests;
 
-/// <summary>Records tool calls; "builds" by writing the configured output file.</summary>
+/// <summary>
+/// Records tool calls. "Builds" by copying this test assembly (which contains the fake plug-in classes)
+/// to the configured output file, and answers pac org fetch with the configured registered classes.
+/// </summary>
 sealed class FakeToolRunner(string outputFile) : IToolRunner
 {
     public List<(string Tool, IReadOnlyList<string> Args)> Calls { get; } = [];
     public int BuildExitCode { get; set; }
     public bool BuildWritesOutput { get; set; } = true;
+
+    /// <summary>Answers for successive pac org fetch calls; null means the query fails.</summary>
+    public Queue<IReadOnlyCollection<string>?> Registered { get; } = new();
+
+    /// <summary>The answer once <see cref="Registered"/> is empty: exactly the classes in the build.</summary>
+    public IReadOnlyCollection<string>? RegisteredDefault { get; set; } = PluginClassesTests.FakePluginClasses;
 
     public int Run(string fileName, IReadOnlyList<string> args, string workingDirectory)
     {
@@ -18,9 +27,19 @@ sealed class FakeToolRunner(string outputFile) : IToolRunner
         if (BuildWritesOutput)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
-            File.WriteAllText(outputFile, "dll");
+            File.Copy(typeof(FakeToolRunner).Assembly.Location, outputFile, overwrite: true);
+            File.SetLastWriteTimeUtc(outputFile, DateTime.UtcNow);
         }
         return BuildExitCode;
+    }
+
+    public ToolResult Capture(string fileName, IReadOnlyList<string> args, string workingDirectory)
+    {
+        var registered = Registered.Count > 0 ? Registered.Dequeue() : RegisteredDefault;
+        if (registered is null)
+            return new ToolResult(1, "Error: not signed in");
+        var rows = string.Concat(registered.Select(name => $"{name}   {Guid.NewGuid()}\n"));
+        return new ToolResult(0, $"Connected as someone\nConnected to... DEV\n\ntypename   plugintypeid\n{rows}");
     }
 }
 
@@ -106,6 +125,55 @@ public class DeployTests
                 "--pluginId", "a515c00c-60a6-458b-8319-159420f8a19b",
                 "--pluginFile", "Main/bin/Release/ILMerge/Main.dll", "--type", "Assembly"],
             runner.Calls[2].Args);
+    }
+
+    [Fact]
+    public void StopsBeforePushing_WhenARegisteredClassIsMissingFromTheBuild()
+    {
+        using var repo = RepoWithConfig();
+        var deploy = DeployConfig.Load(repo.Git.WorkingDirectory);
+        var runner = RunnerFor(repo);
+        runner.RegisteredDefault = [.. PluginClassesTests.FakePluginClasses, "GitPa.Tests.FakePlugins.RemovedPlugin"];
+
+        var error = Assert.Throws<GitPaException>(() =>
+            DeployOperation.Run(repo.Git, repo.Config, deploy, deploy.Assemblies[0], Tools, false, runner, repo.Reporter));
+
+        Assert.Contains("GitPa.Tests.FakePlugins.RemovedPlugin", error.Message);
+        Assert.DoesNotContain(runner.Calls, c => c.Tool == "pac");
+    }
+
+    [Theory]
+    [InlineData(false, "not registered yet")]
+    [InlineData(true, "now registered by the push")]
+    public void ReportsNewClassesAfterPushing(bool pushRegistersThem, string message)
+    {
+        using var repo = RepoWithConfig();
+        var deploy = DeployConfig.Load(repo.Git.WorkingDirectory);
+        var runner = RunnerFor(repo);
+        var withoutNew = PluginClassesTests.FakePluginClasses.Where(c => !c.EndsWith("ContactPlugin")).ToList();
+        runner.Registered.Enqueue(withoutNew);
+        runner.Registered.Enqueue(pushRegistersThem ? PluginClassesTests.FakePluginClasses : withoutNew);
+
+        DeployOperation.Run(repo.Git, repo.Config, deploy, deploy.Assemblies[0], Tools, false, runner, repo.Reporter);
+
+        Assert.Equal("pac", runner.Calls[^1].Tool);
+        var warning = Assert.Single(repo.Reporter.Warnings);
+        Assert.Contains(message, warning);
+        Assert.Contains("GitPa.Tests.FakePlugins.ContactPlugin", warning);
+    }
+
+    [Fact]
+    public void StillPushes_WhenRegisteredClassesCantBeRead()
+    {
+        using var repo = RepoWithConfig();
+        var deploy = DeployConfig.Load(repo.Git.WorkingDirectory);
+        var runner = RunnerFor(repo);
+        runner.RegisteredDefault = null;
+
+        DeployOperation.Run(repo.Git, repo.Config, deploy, deploy.Assemblies[0], Tools, false, runner, repo.Reporter);
+
+        Assert.Equal("pac", runner.Calls[^1].Tool);
+        Assert.Contains("Couldn't read the registered", Assert.Single(repo.Reporter.Warnings));
     }
 
     [Fact]

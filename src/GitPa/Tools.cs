@@ -2,23 +2,48 @@ using System.Diagnostics;
 
 namespace GitPa;
 
+public sealed record ToolResult(int ExitCode, string Output);
+
 /// <summary>Runs external build and deployment tools; replaced by a fake in tests.</summary>
 public interface IToolRunner
 {
     /// <summary>Runs the tool attached to the console and returns its exit code.</summary>
     int Run(string fileName, IReadOnlyList<string> args, string workingDirectory);
+
+    /// <summary>Runs the tool and captures its output (stdout and stderr together).</summary>
+    ToolResult Capture(string fileName, IReadOnlyList<string> args, string workingDirectory);
 }
 
 public sealed class ProcessToolRunner : IToolRunner
 {
     public int Run(string fileName, IReadOnlyList<string> args, string workingDirectory)
     {
-        var info = new ProcessStartInfo(fileName) { WorkingDirectory = workingDirectory, UseShellExecute = false };
-        foreach (var arg in args)
-            info.ArgumentList.Add(arg);
-        using var process = Process.Start(info)!;
+        using var process = Process.Start(StartInfo(fileName, args, workingDirectory, capture: false))!;
         process.WaitForExit();
         return process.ExitCode;
+    }
+
+    public ToolResult Capture(string fileName, IReadOnlyList<string> args, string workingDirectory)
+    {
+        using var process = Process.Start(StartInfo(fileName, args, workingDirectory, capture: true))!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        process.WaitForExit();
+        return new ToolResult(process.ExitCode, output.Result + error.Result);
+    }
+
+    static ProcessStartInfo StartInfo(string fileName, IReadOnlyList<string> args, string workingDirectory, bool capture)
+    {
+        var info = new ProcessStartInfo(fileName)
+        {
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = capture,
+            RedirectStandardError = capture,
+        };
+        foreach (var arg in args)
+            info.ArgumentList.Add(arg);
+        return info;
     }
 }
 
