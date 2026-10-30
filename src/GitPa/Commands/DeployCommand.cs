@@ -38,12 +38,14 @@ static class DeployCommand
             }
 
             DeployConfig deploy;
-            if (File.Exists(Path.Combine(git.WorkingDirectory, DeployConfig.FileName)) || !cli.Interactive)
+            if (DeployConfig.FindFile(git.WorkingDirectory) is not null || !cli.Interactive)
                 deploy = DeployConfig.Load(git.WorkingDirectory);
             else if (cli.Console.Confirm($"This repository has no {DeployConfig.FileName} yet. Set it up now?"))
                 deploy = DeploySetup.Run(cli, git, findTools(null), runner);
             else
                 return 1;
+            if (DeployConfig.UsesLegacyFile(git.WorkingDirectory) && !parseResult.GetValue(dryRunOption))
+                MoveLegacyFile(cli, git, deploy);
             DevBranch.EnsureCheckedOut(git, config);
 
             var name = parseResult.GetValue(assemblyArgument);
@@ -83,6 +85,22 @@ static class DeployCommand
             return 0;
         }));
         return command;
+    }
+
+    /// <summary>Offers to rewrite git-pa.json (git-pa 0.2) as dataverse.json; without a terminal, only says so.</summary>
+    static void MoveLegacyFile(Cli cli, GitRunner git, DeployConfig deploy)
+    {
+        var message = $"{DeployConfig.LegacyFileName} is the old name for {DeployConfig.FileName}, which other tools read too.";
+        if (!cli.Interactive)
+        {
+            cli.Reporter.Warn($"{message} Run git pa deploy in a terminal to move it.");
+            return;
+        }
+        if (!cli.Console.Confirm($"{message} Move it now?"))
+            return;
+        deploy.Save(git.WorkingDirectory);
+        File.Delete(Path.Combine(git.WorkingDirectory, DeployConfig.LegacyFileName));
+        cli.Success($"Moved to {DeployConfig.FileName}. Commit the change: git add {DeployConfig.FileName} {DeployConfig.LegacyFileName}");
     }
 
     /// <summary>For a dry run: compares the last build (if any) with the registered classes. Read-only.</summary>

@@ -50,7 +50,7 @@ public sealed class ProcessToolRunner : IToolRunner
 /// <summary>The external tools deploy needs; null when not found.</summary>
 public sealed record DeployTools(string? MSBuild, string? Pac, string? NuGet)
 {
-    /// <param name="msbuild">MSBuild.exe path from git-pa.json, if set.</param>
+    /// <param name="msbuild">MSBuild.exe path from dataverse.json, if set.</param>
     public static DeployTools Find(string? msbuild)
     {
         var pac = FindOnPath("pac.cmd", "pac.exe", "pac");

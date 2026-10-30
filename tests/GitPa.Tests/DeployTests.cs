@@ -56,8 +56,8 @@ public class DeployTests
     const string Config = """
         {
           // what git pa deploy builds and pushes
-          "deploy": {
-            "environment": "https://contoso-dev.crm.dynamics.com/",
+          "environment": "https://contoso-dev.crm.dynamics.com/",
+          "plugins": {
             "solution": "Plugins.sln",
             "assemblies": [
               { "project": "Main/Main.csproj", "file": "Main/bin/Release/ILMerge/Main.dll",
@@ -96,10 +96,11 @@ public class DeployTests
     }
 
     [Theory]
-    [InlineData("""{ "deploy": { "environment": "not a url", "assemblies": [] } }""", "environment")]
-    [InlineData("""{ "deploy": { "environment": "https://x.crm.dynamics.com", "assemblies": [] } }""", "at least one")]
-    [InlineData("""{ "deploy": { "environment": "https://x.crm.dynamics.com", "assemblies": [ { "project": "a.csproj", "file": "a.dll", "pluginId": "nope" } ] } }""", "pluginId")]
-    [InlineData("""{ "deploy": """, "not valid JSON")]
+    [InlineData("""{ "environment": "not a url", "plugins": { "assemblies": [] } }""", "environment")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "plugins": { "assemblies": [] } }""", "at least one")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "plugins": { "assemblies": [ { "project": "a.csproj", "file": "a.dll", "pluginId": "nope" } ] } }""", "pluginId")]
+    [InlineData("""{ "environment": """, "not valid JSON")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "webResources": {} }""", "no \"plugins\" section")]
     public void RejectsInvalidConfig(string config, string message)
     {
         using var repo = RepoWithConfig(config);
@@ -107,6 +108,48 @@ public class DeployTests
         var error = Assert.Throws<GitPaException>(() => DeployConfig.Load(repo.Git.WorkingDirectory));
 
         Assert.Contains(message, error.Message);
+    }
+
+    const string LegacyConfig = """
+        { "deploy": { "environment": "https://contoso-dev.crm.dynamics.com", "solution": "Plugins.sln",
+          "assemblies": [ { "project": "Main/Main.csproj", "file": "Main/bin/Release/ILMerge/Main.dll",
+            "pluginId": "a515c00c-60a6-458b-8319-159420f8a19b" } ] } }
+        """;
+
+    [Fact]
+    public void ReadsTheOldGitPaJson()
+    {
+        using var repo = new TestRepo();
+        TestRepo.Write(repo.Git, DeployConfig.LegacyFileName, LegacyConfig);
+
+        var deploy = DeployConfig.Load(repo.Git.WorkingDirectory);
+
+        Assert.True(DeployConfig.UsesLegacyFile(repo.Git.WorkingDirectory));
+        Assert.Equal("https://contoso-dev.crm.dynamics.com", deploy.Environment);
+        Assert.Equal("Plugins.sln", deploy.Solution);
+        Assert.Equal("Main", Assert.Single(deploy.Assemblies).Name);
+    }
+
+    [Fact]
+    public void Cli_MovesTheOldGitPaJson_WhenAsked()
+    {
+        using var repo = new TestRepo();
+        TestRepo.Write(repo.Git, DeployConfig.LegacyFileName, LegacyConfig);
+        var before = DeployConfig.Load(repo.Git.WorkingDirectory);
+        var runner = RunnerFor(repo);
+        var console = new TestConsole().Interactive();
+        console.Input.PushTextWithEnter("y");
+
+        var exitCode = GitPaCli.Build(new Cli(console, repo.Git.WorkingDirectory), _ => Tools, runner)
+            .Parse(["deploy", "--yes", "--skip-sync"]).Invoke();
+
+        Assert.Equal(0, exitCode);
+        Assert.False(File.Exists(Path.Combine(repo.Git.WorkingDirectory, DeployConfig.LegacyFileName)));
+        Assert.False(DeployConfig.UsesLegacyFile(repo.Git.WorkingDirectory));
+        var after = DeployConfig.Load(repo.Git.WorkingDirectory);
+        Assert.Equal(before.Environment, after.Environment);
+        Assert.Equal(before.Assemblies, after.Assemblies);
+        Assert.Equal("pac", runner.Calls[^1].Tool);
     }
 
     [Fact]

@@ -1,8 +1,9 @@
+using System.Text.Json.Nodes;
 using Spectre.Console;
 
 namespace GitPa.Commands;
 
-/// <summary>Interactive setup that writes git-pa.json from choices read from Dataverse and the repository.</summary>
+/// <summary>Interactive setup that writes the plug-in settings in dataverse.json from choices read from Dataverse and the repository.</summary>
 static class DeploySetup
 {
     static readonly PacSolution AnySolution = new("(any solution)", "", Guid.Empty);
@@ -17,8 +18,11 @@ static class DeploySetup
         var root = git.WorkingDirectory;
         var console = cli.Console;
 
+        // Other tools' sections in dataverse.json are kept, so the file must be readable before anything is asked.
+        var json = DeployConfig.ReadJson(root);
         DeployConfig? existing = null;
-        if (File.Exists(Path.Combine(root, DeployConfig.FileName)))
+        var existingFile = DeployConfig.FindFile(root);
+        if (existingFile is not null)
         {
             try
             {
@@ -26,11 +30,14 @@ static class DeploySetup
             }
             catch (GitPaException)
             {
-                // a broken file gets replaced
+                // no plug-in settings yet, or broken ones that get replaced
             }
-            if (!console.Confirm($"{DeployConfig.FileName} already exists. Replace it?", defaultValue: false))
+            if (existing is not null &&
+                !console.Confirm($"{Path.GetFileName(existingFile)} already has plug-in settings. Replace them?", defaultValue: false))
                 throw new GitPaException("Setup cancelled; nothing was changed.");
         }
+        var currentEnvironment = existing?.Environment
+            ?? (json?["environment"] is JsonValue value && value.TryGetValue<string>(out var url) ? url.TrimEnd('/') : null);
 
         cli.Reporter.Step("Reading your environments (pac org list)");
         var environments = Pac.Environments(runner, pac, root);
@@ -40,7 +47,7 @@ static class DeploySetup
             .Title("Environment to deploy to:")
             .PageSize(15)
             .UseConverter(e => $"{Markup.Escape(e.Name)} [grey]{Markup.Escape(e.Url)}{(e.Active ? ", active in pac" : "")}[/]")
-            .AddChoices(environments.OrderByDescending(e => e.Url == existing?.Environment).ThenByDescending(e => e.Active)));
+            .AddChoices(environments.OrderByDescending(e => e.Url == currentEnvironment).ThenByDescending(e => e.Active)));
 
         cli.Reporter.Step($"Reading solutions in {environment.Name}");
         var solutions = Pac.Solutions(runner, pac, environment.Url, root)
@@ -107,7 +114,14 @@ static class DeploySetup
 
         var config = new DeployConfig(environment.Url, configuration, solutionFile, existing?.MSBuild, deployAssemblies);
         config.Save(root);
-        cli.Success($"Saved {DeployConfig.FileName}. Commit it so your team deploys the same way: git add {DeployConfig.FileName}");
+        var toAdd = DeployConfig.FileName;
+        var legacy = Path.Combine(root, DeployConfig.LegacyFileName);
+        if (File.Exists(legacy))
+        {
+            File.Delete(legacy); // replaced by dataverse.json
+            toAdd += " " + DeployConfig.LegacyFileName;
+        }
+        cli.Success($"Saved {DeployConfig.FileName}. Commit it so your team deploys the same way: git add {toAdd}");
         return config;
     }
 }
