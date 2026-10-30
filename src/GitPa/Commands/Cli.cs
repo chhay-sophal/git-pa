@@ -40,8 +40,8 @@ public sealed class Cli(IAnsiConsole console, string workingDirectory)
         return prompt();
     }
 
-    public static Option<bool> DryRunOption() =>
-        new("--dry-run") { Description = "Show the git commands that would run, without changing anything" };
+    public static Option<bool> DryRunOption(string description = "Show the git commands that would run, without changing anything") =>
+        new("--dry-run") { Description = description };
 
     public int PrintPlan(IReadOnlyList<string> steps)
     {

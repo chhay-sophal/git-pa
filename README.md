@@ -32,8 +32,8 @@ git pa init --main main --dev dev
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
-`new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` accept `--dry-run` to show the git commands they would run
-without changing anything.
+`new`, `commit`, `sync`, `update`, `clean` and `reset-dev` accept `--dry-run` to show the git commands they
+would run without changing anything; `deploy --dry-run` shows its steps, or the web resources that changed.
 
 ### `git pa new`
 

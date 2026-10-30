@@ -32,7 +32,7 @@ static class DeployCommand
         {
             Description = "Forget the Dataverse sign-in used for web resources",
         };
-        var dryRunOption = Cli.DryRunOption();
+        var dryRunOption = Cli.DryRunOption("Show the steps, or the web resources that changed, without changing anything");
 
         var command = new Command("deploy", "Sync dev, then build and push a plug-in assembly or publish changed web resources")
         {
