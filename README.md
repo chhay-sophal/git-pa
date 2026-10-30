@@ -174,8 +174,10 @@ It asks for confirmation first (`--yes` skips it) and notes when your uncommitte
 part of the build. `--dry-run` shows the exact commands and compares the last build's plug-in
 classes with the registered ones. With several assemblies, pick one by name or from a list.
 
-What to deploy is described in `git-pa.json` at the repository root. Commit it, since it is the
-same for the whole team.
+What to deploy is described in `dataverse.json` at the repository root. Commit it, since it is
+the same for the whole team. The file isn't specific to git-pa: it describes how the repository
+maps to Dataverse, and other tools (like the wrsync VS Code extension) keep their own sections in
+it. git-pa only changes `environment` and `plugins`.
 
 You don't have to write it by hand. `git pa deploy --setup` uses your `pac` sign-in to let you
 pick the environment, the solution and its plug-in assemblies from lists, finds the project that
@@ -184,8 +186,8 @@ offers to run setup when the file doesn't exist yet. The result looks like this:
 
 ```json
 {
-  "deploy": {
-    "environment": "https://contoso-dev.crm.dynamics.com",
+  "environment": "https://contoso-dev.crm.dynamics.com",
+  "plugins": {
     "configuration": "Release",
     "solution": "Plugins.sln",
     "assemblies": [
@@ -205,6 +207,9 @@ offers to run setup when the file doesn't exist yet. The result looks like this:
   browser to look it up.
 - `name` (optional) defaults to the project file name; `configuration` defaults to `Release`;
   `solution` is optional; set `msbuild` to MSBuild.exe's path if it isn't found automatically.
+
+git-pa 0.2 called this file `git-pa.json`, with everything in a `deploy` section. That still
+works; in a terminal, `git pa deploy` offers to move it to `dataverse.json` for you.
 
 Requires the [Power Platform CLI](https://aka.ms/PowerPlatformCLI), signed in with access to
 the environment (`pac auth create`). `pac plugin push` replaces the assembly's code; new plug-in

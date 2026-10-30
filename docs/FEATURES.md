@@ -91,17 +91,18 @@ merging and deploying for you, without your working folder ever leaving dev.
   `pac plugin push`.
 - Supports ILMerge projects: pushes the merged assembly.
 - Several assemblies per repository, deployed separately by name (or picked from a list).
-- Always pushes to the environment in `git-pa.json`, whichever environment `pac` is signed in to.
+- Always pushes to the environment in `dataverse.json`, whichever environment `pac` is signed in to.
 - **Plug-in class check:** compares the plug-in and workflow-activity classes in the build with
   the ones registered in Dataverse. A registered class missing from the build stops the deploy
   before pushing. New classes are reported after the push, with whether they still need
   registering in the Plugin Registration Tool.
 - Asks before deploying (`--yes` skips), mentions when uncommitted changes are included, and
   refuses to push if the build failed or didn't produce a fresh assembly.
-- Configured once per repository in a committed `git-pa.json`, written for you by
+- Configured once per repository in a committed `dataverse.json`, written for you by
   `git pa deploy --setup`: pick the environment, solution and plug-in assemblies from lists read
   from Dataverse; the project and built file for each assembly (including ILMerge output) are
-  found automatically.
+  $1- Setup keeps the rest of `dataverse.json` (like other tools' sections) and only asks before
+  replacing existing plug-in settings.
 
 ## Safety
 
@@ -130,9 +131,10 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
-**`git-pa.json`** (committed in the plugin repository): the environment URL, build
-configuration, solution, and the assemblies to deploy with their project, built file and
-plug-in assembly ID.
+**`dataverse.json`** (committed in the repository): the environment URL, and in `plugins` the build
+configuration, solution, and the assemblies to deploy with their project, built file and plug-in
+assembly ID. Shared with other tools, whose sections git-pa leaves alone. The `git-pa.json` used
+by git-pa 0.2 is still read, and `deploy` offers to move it.
 
 **Environment variable:** `GIT_PA_NO_UPDATE_CHECK=1` turns off the update check.
 
