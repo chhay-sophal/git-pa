@@ -100,7 +100,9 @@ public class DeployTests
     [InlineData("""{ "environment": "https://x.crm.dynamics.com", "plugins": { "assemblies": [] } }""", "at least one")]
     [InlineData("""{ "environment": "https://x.crm.dynamics.com", "plugins": { "assemblies": [ { "project": "a.csproj", "file": "a.dll", "pluginId": "nope" } ] } }""", "pluginId")]
     [InlineData("""{ "environment": """, "not valid JSON")]
-    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "webResources": {} }""", "no \"plugins\" section")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "webResources": {} }""", "nothing to deploy")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "webResources": { "links": [ { "name": "a.js" } ] } }""", "needs \"name\" and \"file\"")]
+    [InlineData("""{ "environment": "https://x.crm.dynamics.com", "webResources": { "links": [ { "name": "a.js", "file": "a.js" }, { "name": "A.JS", "file": "b.js" } ] } }""", "more than once")]
     public void RejectsInvalidConfig(string config, string message)
     {
         using var repo = RepoWithConfig(config);

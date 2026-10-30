@@ -8,6 +8,11 @@ namespace GitPa;
 /// <param name="PluginId">ID of the plug-in assembly record in Dataverse.</param>
 public sealed record DeployAssembly(string Name, string Project, string File, Guid PluginId);
 
+/// <summary>A web resource linked to a local file (by the wrsync VS Code extension, or by hand).</summary>
+/// <param name="Name">The web resource's name in Dataverse, like new_/scripts/account.js; the same in every environment.</param>
+/// <param name="File">The local file, relative to the repository root.</param>
+public sealed record WebResourceLink(string Name, string File);
+
 /// <summary>
 /// What <c>git pa deploy</c> builds and where it pushes it, read from dataverse.json in the repository root.
 /// The file is shared with other tools (like the wrsync extension), so only the environment and the
@@ -18,6 +23,9 @@ public sealed record DeployAssembly(string Name, string Project, string File, Gu
 public sealed record DeployConfig(
     string Environment, string Configuration, string? Solution, string? MSBuild, IReadOnlyList<DeployAssembly> Assemblies)
 {
+    /// <summary>Linked web resources, from the "webResources" section (written by the wrsync extension).</summary>
+    public IReadOnlyList<WebResourceLink> WebResources { get; init; } = [];
+
     public const string FileName = "dataverse.json";
 
     /// <summary>The name used up to git-pa 0.2, with everything in a "deploy" section. Still read.</summary>
@@ -56,15 +64,20 @@ public sealed record DeployConfig(
 
         var (section, plugins) = file?.Plugins is { } p ? ("plugins", p)
             : file?.Deploy is { } d ? ("deploy", (PluginsDto)d)
-            : throw new GitPaException($"{name} has no \"plugins\" section. Set it up with: git pa deploy --setup");
-        var environmentText = file.Environment ?? file.Deploy?.Environment;
+            : ("plugins", null);
+        var links = file?.WebResources?.Links;
+        if (plugins is null && links is not { Count: > 0 })
+            throw new GitPaException(
+                $"{name} has nothing to deploy: it has no \"plugins\" section and no linked web resources. " +
+                "Set up plug-ins with: git pa deploy --setup. Link web resources with the wrsync VS Code extension.");
+        var environmentText = file!.Environment ?? file.Deploy?.Environment;
         var environmentKey = file.Environment is null && file.Deploy is not null ? "deploy.environment" : "environment";
         if (!Uri.TryCreate(environmentText, UriKind.Absolute, out var environment) || environment.Scheme != "https")
             throw new GitPaException($"{name}: \"{environmentKey}\" must be the environment URL, like https://contoso-dev.crm.dynamics.com.");
-        if (plugins.Assemblies is not { Count: > 0 })
+        if (plugins is not null && plugins.Assemblies is not { Count: > 0 })
             throw new GitPaException($"{name}: \"{section}.assemblies\" must list at least one assembly.");
 
-        var assemblies = plugins.Assemblies.Select((a, i) =>
+        var assemblies = (plugins?.Assemblies ?? []).Select((a, i) =>
         {
             var where = $"{name}: {section}.assemblies[{i}]";
             if (string.IsNullOrWhiteSpace(a.Project) || string.IsNullOrWhiteSpace(a.File))
@@ -79,8 +92,16 @@ public sealed record DeployConfig(
         if (duplicate is not null)
             throw new GitPaException($"{name}: two assemblies are named '{duplicate.Key}'; give them different \"name\" values.");
 
-        return new DeployConfig(environment.ToString().TrimEnd('/'), plugins.Configuration ?? "Release",
-            plugins.Solution, plugins.MSBuild, assemblies);
+        var webResources = (links ?? []).Select((l, i) =>
+            string.IsNullOrWhiteSpace(l.Name) || string.IsNullOrWhiteSpace(l.File)
+                ? throw new GitPaException($"{name}: webResources.links[{i}] needs \"name\" and \"file\".")
+                : new WebResourceLink(l.Name, l.File)).ToList();
+        var duplicateLink = webResources.GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (duplicateLink is not null)
+            throw new GitPaException($"{name}: the web resource '{duplicateLink.Key}' is linked more than once.");
+
+        return new DeployConfig(environment.ToString().TrimEnd('/'), plugins?.Configuration ?? "Release",
+            plugins?.Solution, plugins?.MSBuild, assemblies) { WebResources = webResources };
     }
 
     /// <summary>
@@ -145,7 +166,7 @@ public sealed record DeployConfig(
 
     public DeployAssembly Find(string name) =>
         Assemblies.FirstOrDefault(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw new GitPaException(
+        ?? throw new GitPaException(Assemblies.Count == 0 ? $"There are no plug-in assemblies in {FileName}." :
             $"No assembly named '{name}' in {FileName}. Choose one of: {string.Join(", ", Assemblies.Select(a => a.Name))}.");
 
     /// <summary>Turns a path from the config file into a full path.</summary>
@@ -157,6 +178,7 @@ public sealed record DeployConfig(
         public string? Environment { get; set; }
         public PluginsDto? Plugins { get; set; }
         public DeployDto? Deploy { get; set; }
+        public WebResourcesDto? WebResources { get; set; }
     }
 
     class PluginsDto
@@ -171,6 +193,17 @@ public sealed record DeployConfig(
     sealed class DeployDto : PluginsDto
     {
         public string? Environment { get; set; }
+    }
+
+    sealed class WebResourcesDto
+    {
+        public List<LinkDto>? Links { get; set; }
+    }
+
+    sealed class LinkDto
+    {
+        public string? Name { get; set; }
+        public string? File { get; set; }
     }
 
     sealed class AssemblyDto
