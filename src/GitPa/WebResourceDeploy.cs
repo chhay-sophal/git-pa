@@ -54,7 +54,8 @@ public static class WebResourceDeploy
         string? fromHere; // a file path typed relative to the current folder
         try
         {
-            fromHere = Path.GetRelativePath(repositoryRoot, Path.GetFullPath(pattern, workingDirectory)).Replace('\\', '/');
+            // The normalized pattern, with forward slashes: a backslash is no separator on Linux and macOS.
+            fromHere = Path.GetRelativePath(repositoryRoot, Path.GetFullPath(normalized, workingDirectory)).Replace('\\', '/');
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
         {
