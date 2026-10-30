@@ -6,7 +6,8 @@ namespace GitPa.Commands;
 
 static class DeployCommand
 {
-    public static Command Create(Cli cli, Func<DeployConfig, DeployTools> findTools, IToolRunner runner)
+    /// <param name="findTools">Locates MSBuild (given an optional configured path), pac and nuget.</param>
+    public static Command Create(Cli cli, Func<string?, DeployTools> findTools, IToolRunner runner)
     {
         var assemblyArgument = new Argument<string>("assembly")
         {
@@ -15,17 +16,34 @@ static class DeployCommand
         };
         var yesOption = new Option<bool>("--yes", "-y") { Description = "Don't ask for confirmation" };
         var skipSyncOption = new Option<bool>("--skip-sync") { Description = "Build without syncing dev first" };
+        var setupOption = new Option<bool>("--setup")
+        {
+            Description = $"Choose the environment and assemblies from Dataverse and save them to {DeployConfig.FileName}",
+        };
         var dryRunOption = Cli.DryRunOption();
 
         var command = new Command("deploy", "Sync dev, build a plug-in assembly, and push it to the dev environment")
         {
-            assemblyArgument, yesOption, skipSyncOption, dryRunOption,
+            assemblyArgument, yesOption, skipSyncOption, setupOption, dryRunOption,
         };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var git = cli.OpenRepository();
             var config = PaConfig.Load(git);
-            var deploy = DeployConfig.Load(git.WorkingDirectory);
+
+            if (parseResult.GetValue(setupOption))
+            {
+                DeploySetup.Run(cli, git, findTools(null), runner);
+                return 0;
+            }
+
+            DeployConfig deploy;
+            if (File.Exists(Path.Combine(git.WorkingDirectory, DeployConfig.FileName)) || !cli.Interactive)
+                deploy = DeployConfig.Load(git.WorkingDirectory);
+            else if (cli.Console.Confirm($"This repository has no {DeployConfig.FileName} yet. Set it up now?"))
+                deploy = DeploySetup.Run(cli, git, findTools(null), runner);
+            else
+                return 1;
             DevBranch.EnsureCheckedOut(git, config);
 
             var name = parseResult.GetValue(assemblyArgument);
@@ -35,7 +53,7 @@ static class DeployCommand
                     .Title("Assembly to deploy:")
                     .AddChoices(deploy.Assemblies.Select(a => a.Name)))));
 
-            var tools = findTools(deploy);
+            var tools = findTools(deploy.MSBuild);
             var sync = !parseResult.GetValue(skipSyncOption);
             if (parseResult.GetValue(dryRunOption))
             {

@@ -28,7 +28,7 @@ public sealed record DeployConfig(
         if (!System.IO.File.Exists(path))
             throw new GitPaException(
                 $"There is no {FileName} in this repository, so git-pa doesn't know what to deploy. " +
-                "See https://github.com/chhay-sophal/git-pa#git-pa-deploy for an example.");
+                "Create it with: git pa deploy --setup");
 
         FileDto? file;
         try
@@ -63,6 +63,34 @@ public sealed record DeployConfig(
 
         return new DeployConfig(environment.ToString().TrimEnd('/'), deploy.Configuration ?? "Release",
             deploy.Solution, deploy.MSBuild, assemblies);
+    }
+
+    /// <summary>Writes the config to git-pa.json, leaving out values that are the defaults.</summary>
+    public void Save(string repositoryRoot)
+    {
+        var file = new
+        {
+            deploy = new
+            {
+                environment = Environment,
+                configuration = Configuration,
+                solution = Solution,
+                msbuild = MSBuild,
+                assemblies = Assemblies.Select(a => new
+                {
+                    name = a.Name == Path.GetFileNameWithoutExtension(a.Project) ? null : a.Name,
+                    project = a.Project,
+                    file = a.File,
+                    pluginId = a.PluginId.ToString(),
+                }),
+            },
+        };
+        var json = JsonSerializer.Serialize(file, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        });
+        System.IO.File.WriteAllText(Path.Combine(repositoryRoot, FileName), json + "\n");
     }
 
     public DeployAssembly Find(string name) =>

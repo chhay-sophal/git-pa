@@ -175,7 +175,12 @@ part of the build. `--dry-run` shows the exact commands and compares the last bu
 classes with the registered ones. With several assemblies, pick one by name or from a list.
 
 What to deploy is described in `git-pa.json` at the repository root. Commit it, since it is the
-same for the whole team:
+same for the whole team.
+
+You don't have to write it by hand. `git pa deploy --setup` uses your `pac` sign-in to let you
+pick the environment, the solution and its plug-in assemblies from lists, finds the project that
+builds each assembly (and its ILMerge output, if any), and saves the file. Plain `git pa deploy`
+offers to run setup when the file doesn't exist yet. The result looks like this:
 
 ```json
 {
