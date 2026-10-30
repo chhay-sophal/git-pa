@@ -98,7 +98,10 @@ merging and deploying for you, without your working folder ever leaving dev.
   registering in the Plugin Registration Tool.
 - Asks before deploying (`--yes` skips), mentions when uncommitted changes are included, and
   refuses to push if the build failed or didn't produce a fresh assembly.
-- Configured once per repository in a committed `git-pa.json`.
+- Configured once per repository in a committed `git-pa.json`, written for you by
+  `git pa deploy --setup`: pick the environment, solution and plug-in assemblies from lists read
+  from Dataverse; the project and built file for each assembly (including ILMerge output) are
+  found automatically.
 
 ## Safety
 

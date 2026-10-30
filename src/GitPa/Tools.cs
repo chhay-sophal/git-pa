@@ -50,13 +50,14 @@ public sealed class ProcessToolRunner : IToolRunner
 /// <summary>The external tools deploy needs; null when not found.</summary>
 public sealed record DeployTools(string? MSBuild, string? Pac, string? NuGet)
 {
-    public static DeployTools Find(DeployConfig deploy)
+    /// <param name="msbuild">MSBuild.exe path from git-pa.json, if set.</param>
+    public static DeployTools Find(string? msbuild)
     {
         var pac = FindOnPath("pac.cmd", "pac.exe", "pac");
         // The Power Platform CLI ships a nuget.exe next to pac.
         var nuget = FindOnPath("nuget.exe", "nuget")
             ?? (pac is null ? null : Existing(Path.Combine(Path.GetDirectoryName(pac)!, "nuget.exe")));
-        return new DeployTools(FindMSBuild(deploy.MSBuild), pac, nuget);
+        return new DeployTools(FindMSBuild(msbuild), pac, nuget);
     }
 
     /// <summary>Visual Studio's MSBuild: the configured path, else via vswhere, else from PATH.</summary>

@@ -33,8 +33,16 @@ sealed class FakeToolRunner(string outputFile) : IToolRunner
         return BuildExitCode;
     }
 
+    /// <summary>Answers captured calls first, when set and returning non-null (e.g. pac org list in setup).</summary>
+    public Func<IReadOnlyList<string>, ToolResult?>? CaptureHandler { get; set; }
+
+    public List<IReadOnlyList<string>> CaptureCalls { get; } = [];
+
     public ToolResult Capture(string fileName, IReadOnlyList<string> args, string workingDirectory)
     {
+        CaptureCalls.Add(args);
+        if (CaptureHandler?.Invoke(args) is { } handled)
+            return handled;
         var registered = Registered.Count > 0 ? Registered.Dequeue() : RegisteredDefault;
         if (registered is null)
             return new ToolResult(1, "Error: not signed in");

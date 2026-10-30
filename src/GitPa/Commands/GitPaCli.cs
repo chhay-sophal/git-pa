@@ -6,7 +6,7 @@ public static class GitPaCli
 {
     /// <param name="findTools">Locates MSBuild, pac and nuget for deploy; tests pass fakes.</param>
     /// <param name="toolRunner">Runs those tools; tests pass a fake.</param>
-    public static RootCommand Build(Cli cli, Func<DeployConfig, DeployTools>? findTools = null, IToolRunner? toolRunner = null)
+    public static RootCommand Build(Cli cli, Func<string?, DeployTools>? findTools = null, IToolRunner? toolRunner = null)
     {
         var root = new RootCommand("Git workflow helper for Power Apps plugin developers sharing a dev environment.")
         {

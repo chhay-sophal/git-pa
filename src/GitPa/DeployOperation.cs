@@ -109,26 +109,8 @@ public static class DeployOperation
     }
 
     /// <summary>The plug-in types registered for the assembly, read with pac org fetch; null if that fails.</summary>
-    static IReadOnlySet<string>? QueryRegistered(GitRunner git, DeployConfig deploy, DeployAssembly assembly, string pac, IToolRunner runner)
-    {
-        var fetch = "<fetch><entity name='plugintype'><attribute name='typename'/><filter>" +
-            $"<condition attribute='pluginassemblyid' operator='eq' value='{assembly.PluginId}'/></filter></entity></fetch>";
-        var result = runner.Capture(pac, ["org", "fetch", "--environment", deploy.Environment, "--xml", fetch], git.WorkingDirectory);
-        if (result.ExitCode != 0)
-            return null;
-
-        // pac prints a table: some connection lines, a header starting with "typename", then one row per type.
-        var lines = result.Output.Split('\n', StringSplitOptions.TrimEntries);
-        var header = Array.FindIndex(lines, l => l.StartsWith("typename", StringComparison.OrdinalIgnoreCase));
-        if (header < 0)
-            return lines.Any(l => l.Contains("No records", StringComparison.OrdinalIgnoreCase))
-                ? new HashSet<string>()
-                : null;
-        return lines.Skip(header + 1)
-            .Where(l => l.Length > 0)
-            .Select(l => l.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0])
-            .ToHashSet(StringComparer.Ordinal);
-    }
+    static IReadOnlySet<string>? QueryRegistered(GitRunner git, DeployConfig deploy, DeployAssembly assembly, string pac, IToolRunner runner) =>
+        Pac.PluginTypes(runner, pac, deploy.Environment, assembly.PluginId, git.WorkingDirectory);
 
     static string[] RestoreArgs(DeployConfig deploy) => ["restore", deploy.Solution!];
 
