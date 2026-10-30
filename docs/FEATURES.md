@@ -19,7 +19,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `git pa pr` | Opens the "create pull request" page from a feature branch to main |
 | `git pa clean` | Deletes local feature branches whose work is already in main |
 | `git pa reset-dev` | Rebuilds the shared dev branch from main plus the branches still in progress |
-| `git pa deploy` | Syncs dev, builds a plug-in assembly, and pushes it to the dev environment |
+| `git pa deploy` | Syncs dev, then builds and pushes a plug-in assembly or publishes changed web resources |
 
 ## Branches
 
@@ -91,17 +91,38 @@ merging and deploying for you, without your working folder ever leaving dev.
   `pac plugin push`.
 - Supports ILMerge projects: pushes the merged assembly.
 - Several assemblies per repository, deployed separately by name (or picked from a list).
-- Always pushes to the environment in `git-pa.json`, whichever environment `pac` is signed in to.
+- Always pushes to the environment in `dataverse.json`, whichever environment `pac` is signed in to.
 - **Plug-in class check:** compares the plug-in and workflow-activity classes in the build with
   the ones registered in Dataverse. A registered class missing from the build stops the deploy
   before pushing. New classes are reported after the push, with whether they still need
   registering in the Plugin Registration Tool.
 - Asks before deploying (`--yes` skips), mentions when uncommitted changes are included, and
   refuses to push if the build failed or didn't produce a fresh assembly.
-- Configured once per repository in a committed `git-pa.json`, written for you by
+- Configured once per repository in a committed `dataverse.json`, written for you by
   `git pa deploy --setup`: pick the environment, solution and plug-in assemblies from lists read
   from Dataverse; the project and built file for each assembly (including ILMerge output) are
   found automatically.
+- Setup keeps the rest of `dataverse.json` (like other tools' sections) and only asks before
+  replacing existing plug-in settings.
+
+**Web resources (`deploy --web-resources`)**
+- One step: sync dev → compare every linked file with Dataverse → upload and publish the changed
+  ones together.
+- Line endings (CRLF/LF) and a UTF-8 byte order mark don't count as changes, as in wrsync.
+- Lists the changes in a checklist, all ticked, with who last changed each in Dataverse,
+  highlighting ones someone else changed last; untick any to leave them out. `--yes` publishes
+  them all without asking; `--dry-run` only lists them.
+- Deploy only some by naming them: web resource names or linked files, with `*` and `?`
+  wildcards (`git pa deploy -w sync_account.js "new_/forms/*"`). A name that matches nothing
+  stops before anything happens.
+- Skips, with a warning, links to missing files, to web resources the environment doesn't have,
+  and to managed ones.
+- Links are read from `dataverse.json` by web resource name, as written by the wrsync VS Code
+  extension's **Share Links with the Team**.
+- Signs in to Dataverse with your Microsoft account in the browser the first time (pac has no
+  web resource command); no app registration, guest accounts work, and the sign-in is cached.
+  `--sign-out` forgets it.
+- With both assemblies and web resources configured, plain `git pa deploy` asks which to deploy.
 
 ## Safety
 
@@ -115,6 +136,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | Teammate pushed to dev during `reset-dev` | The force-push is refused; nothing changes |
 | Build fails during `deploy` | Nothing is pushed to the environment |
 | A registered plug-in class is missing from the build | `deploy` stops before pushing and names the class |
+| A web resource upload fails midway | The ones already uploaded are published; the error names the one that failed |
 | Unsure what a command will do | `--dry-run` on `new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` prints the exact commands |
 
 ## Configuration
@@ -130,9 +152,11 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
-**`git-pa.json`** (committed in the plugin repository): the environment URL, build
-configuration, solution, and the assemblies to deploy with their project, built file and
-plug-in assembly ID.
+**`dataverse.json`** (committed in the repository): the environment URL, and in `plugins` the build
+configuration, solution, and the assemblies to deploy with their project, built file and plug-in
+assembly ID; in `webResources.links`, the web resources linked to files. Shared with other tools (wrsync
+writes the links), whose sections git-pa leaves alone. The `git-pa.json` used
+by git-pa 0.2 is still read, and `deploy` offers to move it.
 
 **Environment variable:** `GIT_PA_NO_UPDATE_CHECK=1` turns off the update check.
 

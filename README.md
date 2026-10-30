@@ -32,8 +32,8 @@ git pa init --main main --dev dev
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
-`new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` accept `--dry-run` to show the git commands they would run
-without changing anything.
+`new`, `commit`, `sync`, `update`, `clean` and `reset-dev` accept `--dry-run` to show the git commands they
+would run without changing anything; `deploy --dry-run` shows its steps, or the web resources that changed.
 
 ### `git pa new`
 
@@ -156,6 +156,9 @@ Non-interactively, pick branches with `-b` (repeatable) and confirm with `--yes`
 
 ### `git pa deploy [assembly]`
 
+Deploys a plug-in assembly, or the web resources that changed (see
+[Web resources](#web-resources) below). With both in `dataverse.json`, it asks which.
+
 Builds a plug-in assembly and pushes it to the dev environment in one step:
 
 1. `git pa sync`, so the build contains everyone's pushed work (skip with `--skip-sync`)
@@ -174,8 +177,10 @@ It asks for confirmation first (`--yes` skips it) and notes when your uncommitte
 part of the build. `--dry-run` shows the exact commands and compares the last build's plug-in
 classes with the registered ones. With several assemblies, pick one by name or from a list.
 
-What to deploy is described in `git-pa.json` at the repository root. Commit it, since it is the
-same for the whole team.
+What to deploy is described in `dataverse.json` at the repository root. Commit it, since it is
+the same for the whole team. The file isn't specific to git-pa: it describes how the repository
+maps to Dataverse, and other tools (like the wrsync VS Code extension) keep their own sections in
+it. git-pa only changes `environment` and `plugins`.
 
 You don't have to write it by hand. `git pa deploy --setup` uses your `pac` sign-in to let you
 pick the environment, the solution and its plug-in assemblies from lists, finds the project that
@@ -184,8 +189,8 @@ offers to run setup when the file doesn't exist yet. The result looks like this:
 
 ```json
 {
-  "deploy": {
-    "environment": "https://contoso-dev.crm.dynamics.com",
+  "environment": "https://contoso-dev.crm.dynamics.com",
+  "plugins": {
     "configuration": "Release",
     "solution": "Plugins.sln",
     "assemblies": [
@@ -206,9 +211,58 @@ offers to run setup when the file doesn't exist yet. The result looks like this:
 - `name` (optional) defaults to the project file name; `configuration` defaults to `Release`;
   `solution` is optional; set `msbuild` to MSBuild.exe's path if it isn't found automatically.
 
+git-pa 0.2 called this file `git-pa.json`, with everything in a `deploy` section. That still
+works; in a terminal, `git pa deploy` offers to move it to `dataverse.json` for you.
+
 Requires the [Power Platform CLI](https://aka.ms/PowerPlatformCLI), signed in with access to
 the environment (`pac auth create`). `pac plugin push` replaces the assembly's code; new plug-in
 classes or steps still need registering with the Plugin Registration Tool.
+
+#### Web resources
+
+`git pa deploy --web-resources` (or `-w`) publishes the web resources whose linked files changed:
+
+1. `git pa sync` (skip with `--skip-sync`)
+2. Every linked file is compared with its web resource in the environment. Line endings (CRLF/LF)
+   and a UTF-8 byte order mark don't count as changes.
+3. The changed ones are listed in a checklist, all ticked, with who last changed each in
+   Dataverse. Ones someone else changed last are highlighted: if they edited them there directly
+   rather than through git, publishing replaces their changes. Untick any you want to leave out
+   (unticking all cancels); they're simply listed again next time.
+4. The ticked ones are uploaded and published together.
+
+To deploy only some, name them by web resource name or linked file, with `*` and `?` as
+wildcards. Only those are compared and published:
+
+```sh
+git pa deploy -w sync_account.js scripts/contact.js "new_/forms/*"
+```
+
+`--yes` skips the checklist and publishes everything changed (or everything changed among the
+named ones). Links to files that don't exist, to web resources the environment doesn't have, or
+to managed web resources are skipped with a warning. `--dry-run` lists what would be published
+without syncing or changing anything.
+
+The links live in `dataverse.json`, by web resource name:
+
+```json
+{
+  "environment": "https://contoso-dev.crm.dynamics.com",
+  "webResources": {
+    "links": [
+      { "name": "new_/scripts/account.js", "file": "src/scripts/account.js" }
+    ]
+  }
+}
+```
+
+The [wrsync](https://github.com/chhay-sophal/wrsync) VS Code extension writes them for you: link
+files there (or let it suggest links), then run its **Share Links with the Team** command.
+
+`pac` can't update web resources, so git-pa signs in to Dataverse itself, with your Microsoft
+account in the browser, the first time. No app registration is needed, and guest accounts work.
+The sign-in is cached for your user account (encrypted on Windows and macOS).
+`git pa deploy --sign-out` forgets it, for example to switch accounts.
 
 ### Update notice
 

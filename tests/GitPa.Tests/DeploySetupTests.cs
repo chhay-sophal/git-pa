@@ -114,9 +114,16 @@ public class DeploySetupTests
     }
 
     [Fact]
-    public void SavedConfigLoadsBack()
+    public void SavedConfigLoadsBack_KeepingOtherSections()
     {
         using var repo = new TestRepo();
+        TestRepo.Write(repo.Git, DeployConfig.FileName, """
+            {
+              // written by another tool
+              "environment": "https://contoso-uat.crm.dynamics.com",
+              "webResources": { "links": [ { "name": "new_/scripts/account.js", "file": "src/account.js" } ] },
+            }
+            """);
         var config = new DeployConfig("https://contoso-dev.crm.dynamics.com", "Release", "Contoso.sln", null,
             [new DeployAssembly("Contoso.Plugins", "Plugins/Plugins.csproj", "Plugins/bin/Release/ILMerge/Contoso.Plugins.dll",
                 Guid.Parse("a515c00c-60a6-458b-8319-159420f8a19b"))]);
@@ -127,13 +134,34 @@ public class DeploySetupTests
         Assert.Equal(config.Environment, loaded.Environment);
         Assert.Equal(config.Solution, loaded.Solution);
         Assert.Equal(config.Assemblies, loaded.Assemblies);
-        Assert.DoesNotContain("msbuild", TestRepo.Read(repo.Git, DeployConfig.FileName));
+        var json = TestRepo.Read(repo.Git, DeployConfig.FileName);
+        Assert.DoesNotContain("msbuild", json);
+        Assert.Contains("new_/scripts/account.js", json);
+        Assert.Equal("https://contoso-dev.crm.dynamics.com",
+            DeployConfig.ReadJson(repo.Git.WorkingDirectory)!["environment"]!.GetValue<string>());
     }
 
     [Fact]
-    public void WizardWritesConfigFromChoices()
+    public void SaveRefusesToOverwriteInvalidJson()
+    {
+        using var repo = new TestRepo();
+        TestRepo.Write(repo.Git, DeployConfig.FileName, """{ "webResources": """);
+        var config = new DeployConfig("https://contoso-dev.crm.dynamics.com", "Release", null, null,
+            [new DeployAssembly("A", "A/A.csproj", "A/bin/A.dll", Guid.NewGuid())]);
+
+        Assert.Throws<GitPaException>(() => config.Save(repo.Git.WorkingDirectory));
+        Assert.Equal("""{ "webResources": """, TestRepo.Read(repo.Git, DeployConfig.FileName));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WizardWritesConfigFromChoices(bool fileHasOnlyWebResources)
     {
         using var repo = RepoWithProjects();
+        if (fileHasOnlyWebResources) // no plug-in settings to replace, so no question about it
+            TestRepo.Write(repo.Git, DeployConfig.FileName,
+                """{ "environment": "https://contoso-dev.crm.dynamics.com/", "webResources": { "links": [] } }""");
         var runner = new FakeToolRunner("unused") { CaptureHandler = Answer };
         var console = new TestConsole().Interactive();
         console.Profile.Width = 200;
@@ -159,5 +187,6 @@ public class DeploySetupTests
                     Guid.Parse("3c0a4998-5183-4048-b8df-34b3727f92ea"))],
             config.Assemblies);
         Assert.Contains(runner.CaptureCalls, args => args[^1].Contains("ed7d461f-23ec-ea11-a815-000d3a82fbcb"));
+        Assert.Equal(fileHasOnlyWebResources, DeployConfig.ReadJson(repo.Git.WorkingDirectory)!.ContainsKey("webResources"));
     }
 }
