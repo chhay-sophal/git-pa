@@ -105,6 +105,39 @@ public class WebResourceDeployTests
         Assert.Equal(1, comparison.Unchanged);
     }
 
+    [Theory]
+    [InlineData("new_/scripts/ACCOUNT.js", "", "new_/scripts/account.js")]
+    [InlineData("scripts\\contact.js", "", "new_/scripts/contact.js")]
+    [InlineData(".\\lead.js", "scripts", "new_/scripts/lead.js")]
+    [InlineData("new_/scripts/l*", "", "new_/scripts/lead.js")]
+    [InlineData("scripts/?one.js", "", "new_/scripts/gone.js")]
+    [InlineData("new_/*", "", "new_/scripts/account.js,new_/scripts/contact.js,new_/scripts/lead.js,new_/scripts/gone.js,new_/scripts/missing.js")]
+    public void SelectsLinksByNameOrFile(string pattern, string folder, string expected)
+    {
+        var (repo, _) = Setup();
+        using var _repo = repo;
+        var root = repo.Git.WorkingDirectory;
+        var links = DeployConfig.Load(root).WebResources;
+
+        var selected = WebResourceDeploy.Select(links, [pattern], root, Path.Combine(root, folder));
+
+        Assert.Equal(expected.Split(','), selected.Select(l => l.Name));
+    }
+
+    [Fact]
+    public void RejectsPatternsThatMatchNothing()
+    {
+        var (repo, _) = Setup();
+        using var _repo = repo;
+        var root = repo.Git.WorkingDirectory;
+        var links = DeployConfig.Load(root).WebResources;
+
+        var error = Assert.Throws<GitPaException>(() => WebResourceDeploy.Select(links, ["scripts/account.js", "nope.js"], root, root));
+
+        Assert.Contains("'nope.js'", error.Message);
+        Assert.DoesNotContain("account", error.Message);
+    }
+
     [Fact]
     public void PublishesWhatWasUploaded_WhenAnUploadFails()
     {
@@ -139,6 +172,42 @@ public class WebResourceDeployTests
         Assert.Equal(2, Assert.Single(dataverse.Publishes).Count);
         Assert.Contains("Someone else changed", console.Output);
         Assert.Contains("Published 2 web resources", console.Output);
+    }
+
+    [Fact]
+    public void Cli_PublishesOnlyTheNamedOnes()
+    {
+        var (repo, dataverse) = Setup();
+        using var _repo = repo;
+
+        Assert.Equal(0, Run(repo, dataverse, new TestConsole(), "deploy", "-w", "scripts/lead.js", "--yes", "--skip-sync"));
+
+        Assert.Equal(["lead v2\n"], dataverse.Uploads.Select(u => u.Content));
+        Assert.Single(Assert.Single(dataverse.Publishes));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cli_PublishesOnlyTheTickedOnes(bool untickAll)
+    {
+        var (repo, dataverse) = Setup();
+        using var _repo = repo;
+        var console = new TestConsole().Interactive();
+        console.Profile.Width = 200;
+        console.Input.PushKey(ConsoleKey.Spacebar); // untick account.js, the first
+        if (untickAll)
+        {
+            console.Input.PushKey(ConsoleKey.DownArrow);
+            console.Input.PushKey(ConsoleKey.Spacebar); // and lead.js
+        }
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = Run(repo, dataverse, console, "deploy", "-w", "--skip-sync");
+
+        Assert.Equal(untickAll ? 1 : 0, exitCode);
+        Assert.Equal(untickAll ? [] : ["lead v2\n"], dataverse.Uploads.Select(u => u.Content));
+        Assert.Contains("untick them to leave them out", console.Output);
     }
 
     [Fact]
@@ -196,6 +265,11 @@ public class WebResourceDeployTests
         var nonInteractive = new TestConsole();
         Assert.Equal(1, Run(repo, dataverse, nonInteractive, "deploy", "--yes"));
         Assert.Contains("--web-resources", nonInteractive.Output);
+
+        var webResourceName = new TestConsole();
+        webResourceName.Profile.Width = 200;
+        Assert.Equal(1, Run(repo, dataverse, webResourceName, "deploy", "new_/scripts/lead.js", "--yes"));
+        Assert.Contains("git pa deploy --web-resources new_/scripts/lead.js", webResourceName.Output);
     }
 }
 

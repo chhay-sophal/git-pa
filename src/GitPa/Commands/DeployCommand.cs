@@ -12,10 +12,11 @@ static class DeployCommand
     /// <param name="connect">Connects to Dataverse for web resources, signing in if needed.</param>
     public static Command Create(Cli cli, Func<string?, DeployTools> findTools, IToolRunner runner, DataverseConnector connect)
     {
-        var assemblyArgument = new Argument<string>("assembly")
+        var namesArgument = new Argument<string[]>("name")
         {
-            Description = $"Assembly to deploy, as named in {DeployConfig.FileName}",
-            Arity = ArgumentArity.ZeroOrOne,
+            Description = $"Assembly to deploy, as named in {DeployConfig.FileName}; with --web-resources, the web resources " +
+                "to deploy, by name or linked file (* and ? work as wildcards)",
+            Arity = ArgumentArity.ZeroOrMore,
         };
         var webResourcesOption = new Option<bool>("--web-resources", "-w")
         {
@@ -35,7 +36,7 @@ static class DeployCommand
 
         var command = new Command("deploy", "Sync dev, then build and push a plug-in assembly or publish changed web resources")
         {
-            assemblyArgument, webResourcesOption, yesOption, skipSyncOption, setupOption, signOutOption, dryRunOption,
+            namesArgument, webResourcesOption, yesOption, skipSyncOption, setupOption, signOutOption, dryRunOption,
         };
         command.SetAction(parseResult => cli.Execute(() =>
         {
@@ -69,12 +70,19 @@ static class DeployCommand
             var sync = !parseResult.GetValue(skipSyncOption);
             var dryRun = parseResult.GetValue(dryRunOption);
             var yes = parseResult.GetValue(yesOption);
-            var name = parseResult.GetValue(assemblyArgument);
+            var names = parseResult.GetValue(namesArgument) ?? [];
             var webResources = parseResult.GetValue(webResourcesOption);
-            if (webResources && name is not null)
-                throw new GitPaException("Deploy either an assembly or --web-resources, not both.");
+            if (webResources)
+                return DeployWebResources(cli, git, config, deploy, names, sync, dryRun, yes, connect);
 
-            if (!webResources && name is null)
+            if (names.Length > 1)
+                throw new GitPaException("Deploy one assembly at a time. To pick web resources, add --web-resources.");
+            var name = names.FirstOrDefault();
+            if (name is not null && !deploy.Assemblies.Any(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                deploy.WebResources.Any(l => WebResourceDeploy.Matches(l, name, git.WorkingDirectory, cli.WorkingDirectory)))
+                throw new GitPaException($"'{name}' is a web resource. Deploy it with: git pa deploy --web-resources {name}");
+
+            if (name is null)
             {
                 var choices = deploy.Assemblies.Select(a => a.Name).ToList();
                 if (deploy.WebResources.Count > 0)
@@ -87,7 +95,7 @@ static class DeployCommand
                 name = webResources ? null : choice;
             }
             if (webResources)
-                return DeployWebResources(cli, git, config, deploy, sync, dryRun, yes, connect);
+                return DeployWebResources(cli, git, config, deploy, [], sync, dryRun, yes, connect);
 
             var assembly = deploy.Find(name!);
             var tools = findTools(deploy.MSBuild);
@@ -125,17 +133,18 @@ static class DeployCommand
     }
 
     /// <summary>
-    /// Syncs dev, compares every linked file with its web resource, lists the changed ones, and (once
-    /// confirmed) uploads and publishes them. Unlike for an assembly, what changed is only known after
-    /// syncing, so the confirmation comes after the sync.
+    /// Syncs dev, compares the linked files (all, or those matching <paramref name="patterns"/>) with their
+    /// web resources, and uploads and publishes the changed ones: in a terminal, the ones you keep ticked.
+    /// Unlike for an assembly, what changed is only known after syncing, so the choice comes after the sync.
     /// </summary>
-    static int DeployWebResources(Cli cli, GitRunner git, PaConfig config, DeployConfig deploy,
+    static int DeployWebResources(Cli cli, GitRunner git, PaConfig config, DeployConfig deploy, IReadOnlyList<string> patterns,
         bool sync, bool dryRun, bool yes, DataverseConnector connect)
     {
         if (deploy.WebResources.Count == 0)
             throw new GitPaException(
                 $"{DeployConfig.FileName} has no linked web resources. Link them with the wrsync VS Code extension " +
                 "(Share Links with the Team).");
+        var links = WebResourceDeploy.Select(deploy.WebResources, patterns, git.WorkingDirectory, cli.WorkingDirectory);
 
         if (dryRun)
             cli.Console.MarkupLine("[yellow]Dry run[/], nothing will be changed" + (sync ? $" ({config.Dev} is not synced first)." : "."));
@@ -147,8 +156,8 @@ static class DeployCommand
         }
 
         var dataverse = connect(deploy.Environment, cli.Interactive, cli.Reporter);
-        cli.Reporter.Step($"Comparing {WebResourceDeploy.Plural(deploy.WebResources.Count, "linked web resource")} with {deploy.Environment}");
-        var comparison = WebResourceDeploy.Compare(git.WorkingDirectory, deploy.WebResources, dataverse);
+        cli.Reporter.Step($"Comparing {WebResourceDeploy.Plural(links.Count, "linked web resource")} with {deploy.Environment}");
+        var comparison = WebResourceDeploy.Compare(git.WorkingDirectory, links, dataverse);
         if (comparison.MissingFiles.Count > 0)
             cli.Reporter.Warn("Skipped, the linked file doesn't exist:\n  " +
                 string.Join("\n  ", comparison.MissingFiles.Select(l => $"{l.Name} → {l.File}")));
@@ -166,37 +175,59 @@ static class DeployCommand
         }
 
         var me = dataverse.UserId();
-        var table = new Table().Border(TableBorder.Rounded).AddColumns("Web resource", "File", "Last changed in Dataverse");
-        var byOthers = false;
-        foreach (var change in comparison.Changed)
+        bool BySomeoneElse(WebResourceChange change) => change.Record.ModifiedById is { } by && by != me;
+        string LastChanged(WebResourceChange change)
         {
-            var record = change.Record;
-            var someoneElse = record.ModifiedById is { } by && by != me;
-            byOthers |= someoneElse;
-            var when = record.ModifiedOn is { } on ? on.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "";
-            var who = Markup.Escape(record.ModifiedByName ?? "");
-            table.AddRow(Markup.Escape(change.Link.Name), Markup.Escape(change.Link.File),
-                someoneElse ? $"[yellow]{who}[/] {when}" : $"[grey]{who} {when}[/]");
+            var when = change.Record.ModifiedOn is { } on ? on.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "";
+            var who = Markup.Escape(change.Record.ModifiedByName ?? "");
+            return BySomeoneElse(change) ? $"[yellow]{who}[/] {when}" : $"[grey]{who} {when}[/]";
         }
+
+        var changed = comparison.Changed;
         cli.Console.MarkupLine(
-            $"{(dryRun ? "Would publish" : "Publish")} [bold]{WebResourceDeploy.Plural(comparison.Changed.Count, "web resource")}[/] " +
-            $"to [bold]{Markup.Escape(deploy.Environment)}[/] [grey]({comparison.Unchanged} unchanged)[/]");
-        cli.Console.Write(table);
-        if (byOthers)
+            $"{(dryRun ? "Would publish" : "Changed:")} [bold]{WebResourceDeploy.Plural(changed.Count, "web resource")}[/] " +
+            $"{(dryRun ? "to" : "compared with")} [bold]{Markup.Escape(deploy.Environment)}[/] [grey]({comparison.Unchanged} unchanged)[/]");
+        var choose = !dryRun && !yes && cli.Interactive;
+        if (!choose)
+        {
+            var table = new Table().Border(TableBorder.Rounded).AddColumns("Web resource", "File", "Last changed in Dataverse");
+            foreach (var change in changed)
+                table.AddRow(Markup.Escape(change.Link.Name), Markup.Escape(change.Link.File), LastChanged(change));
+            cli.Console.Write(table);
+        }
+        if (changed.Any(BySomeoneElse))
             cli.Console.MarkupLine(
                 "[yellow]Someone else changed the highlighted ones in Dataverse last.[/] If they edited them there " +
-                "directly rather than through git, publishing replaces their changes.");
+                "directly rather than through git, publishing replaces their changes" + (choose ? "; untick them to leave them out." : "."));
         if (dryRun)
             return 0;
+        if (!yes && !cli.Interactive)
+            throw new GitPaException("Use --yes to deploy without confirmation, or --dry-run to preview.");
 
         if (git.Run("status", "--porcelain").Length > 0)
             cli.Console.MarkupLine("[grey]Your uncommitted changes are included.[/]");
-        if (!Confirmed(cli, yes))
-            return 1;
+        if (choose)
+        {
+            var prompt = new MultiSelectionPrompt<WebResourceChange>()
+                .Title($"Web resources to publish to [bold]{Markup.Escape(deploy.Environment)}[/]:")
+                .NotRequired()
+                .PageSize(20)
+                .InstructionsText("[grey](space to toggle, enter to publish the ticked ones; untick all to cancel)[/]")
+                .UseConverter(c => $"{Markup.Escape(c.Link.Name)} [grey]{Markup.Escape(c.Link.File)} ·[/] {LastChanged(c)}")
+                .AddChoices(changed);
+            foreach (var change in changed)
+                prompt.Select(change);
+            changed = cli.Console.Prompt(prompt);
+            if (changed.Count == 0)
+            {
+                cli.Console.MarkupLine("Nothing was deployed.");
+                return 1;
+            }
+        }
 
         var stopwatch = Stopwatch.StartNew();
-        WebResourceDeploy.Publish(comparison.Changed, dataverse, cli.Reporter);
-        cli.Success($"Published {WebResourceDeploy.Plural(comparison.Changed.Count, "web resource")} to {deploy.Environment} in {stopwatch.Elapsed:m\\:ss}.");
+        WebResourceDeploy.Publish(changed, dataverse, cli.Reporter);
+        cli.Success($"Published {WebResourceDeploy.Plural(changed.Count, "web resource")} to {deploy.Environment} in {stopwatch.Elapsed:m\\:ss}.");
         return 0;
     }
 

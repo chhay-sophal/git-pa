@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GitPa;
 
@@ -20,6 +21,50 @@ public sealed record WebResourceComparison(
 /// <summary>Publishes the linked web resources whose local files differ from the environment.</summary>
 public static class WebResourceDeploy
 {
+    /// <summary>
+    /// The links matching any of the patterns, in their configured order: a web resource name or linked
+    /// file (relative to the repository root or to <paramref name="workingDirectory"/>), case-insensitive,
+    /// with * and ? wildcards. Throws for a pattern that matches nothing, before anything is deployed.
+    /// </summary>
+    public static IReadOnlyList<WebResourceLink> Select(
+        IReadOnlyList<WebResourceLink> links, IReadOnlyList<string> patterns, string repositoryRoot, string workingDirectory)
+    {
+        if (patterns.Count == 0)
+            return links;
+        var unmatched = patterns.Where(p => !links.Any(l => Matches(l, p, repositoryRoot, workingDirectory))).ToList();
+        if (unmatched.Count > 0)
+            throw new GitPaException(
+                $"No linked web resource matches {string.Join(", ", unmatched.Select(p => $"'{p}'"))}. " +
+                $"Use a web resource name or a linked file from {DeployConfig.FileName}; * and ? work as wildcards.");
+        return links.Where(l => patterns.Any(p => Matches(l, p, repositoryRoot, workingDirectory))).ToList();
+    }
+
+    public static bool Matches(WebResourceLink link, string pattern, string repositoryRoot, string workingDirectory)
+    {
+        var normalized = pattern.Trim().Replace('\\', '/');
+        if (normalized.StartsWith("./"))
+            normalized = normalized[2..];
+        if (normalized.IndexOfAny(['*', '?']) >= 0)
+        {
+            var regex = new Regex(
+                "^" + Regex.Escape(normalized).Replace(@"\*", ".*").Replace(@"\?", ".") + "$", RegexOptions.IgnoreCase);
+            return regex.IsMatch(link.Name) || regex.IsMatch(link.File);
+        }
+
+        string? fromHere; // a file path typed relative to the current folder
+        try
+        {
+            fromHere = Path.GetRelativePath(repositoryRoot, Path.GetFullPath(pattern, workingDirectory)).Replace('\\', '/');
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            fromHere = null;
+        }
+        return new[] { normalized, fromHere }.Any(p =>
+            string.Equals(p, link.Name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p, link.File.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
+    }
+
     public static WebResourceComparison Compare(string repositoryRoot, IReadOnlyList<WebResourceLink> links, IDataverse dataverse)
     {
         var missingFiles = links.Where(l => !File.Exists(DeployConfig.Resolve(repositoryRoot, l.File))).ToList();
