@@ -225,14 +225,23 @@ classes or steps still need registering with the Plugin Registration Tool.
 1. `git pa sync` (skip with `--skip-sync`)
 2. Every linked file is compared with its web resource in the environment. Line endings (CRLF/LF)
    and a UTF-8 byte order mark don't count as changes.
-3. The changed ones are listed with who last changed them in Dataverse. Ones someone else changed
-   last are highlighted: if they edited them there directly rather than through git, publishing
-   replaces their changes.
-4. After you confirm (`--yes` skips), they're uploaded and published together.
+3. The changed ones are listed in a checklist, all ticked, with who last changed each in
+   Dataverse. Ones someone else changed last are highlighted: if they edited them there directly
+   rather than through git, publishing replaces their changes. Untick any you want to leave out
+   (unticking all cancels); they're simply listed again next time.
+4. The ticked ones are uploaded and published together.
 
-Links to files that don't exist, to web resources the environment doesn't have, or to managed
-web resources are skipped with a warning. `--dry-run` lists what would be published without
-syncing or changing anything.
+To deploy only some, name them by web resource name or linked file, with `*` and `?` as
+wildcards. Only those are compared and published:
+
+```sh
+git pa deploy -w sync_account.js scripts/contact.js "new_/forms/*"
+```
+
+`--yes` skips the checklist and publishes everything changed (or everything changed among the
+named ones). Links to files that don't exist, to web resources the environment doesn't have, or
+to managed web resources are skipped with a warning. `--dry-run` lists what would be published
+without syncing or changing anything.
 
 The links live in `dataverse.json`, by web resource name:
 

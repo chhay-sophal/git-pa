@@ -109,8 +109,12 @@ merging and deploying for you, without your working folder ever leaving dev.
 - One step: sync dev → compare every linked file with Dataverse → upload and publish the changed
   ones together.
 - Line endings (CRLF/LF) and a UTF-8 byte order mark don't count as changes, as in wrsync.
-- Lists the changes with who last changed each in Dataverse, highlighting ones someone else
-  changed last, before asking (`--yes` skips). `--dry-run` only lists them.
+- Lists the changes in a checklist, all ticked, with who last changed each in Dataverse,
+  highlighting ones someone else changed last; untick any to leave them out. `--yes` publishes
+  them all without asking; `--dry-run` only lists them.
+- Deploy only some by naming them: web resource names or linked files, with `*` and `?`
+  wildcards (`git pa deploy -w sync_account.js "new_/forms/*"`). A name that matches nothing
+  stops before anything happens.
 - Skips, with a warning, links to missing files, to web resources the environment doesn't have,
   and to managed ones.
 - Links are read from `dataverse.json` by web resource name, as written by the wrsync VS Code
