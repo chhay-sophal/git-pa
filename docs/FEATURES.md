@@ -19,7 +19,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `git pa pr` | Opens the "create pull request" page from a feature branch to main |
 | `git pa clean` | Deletes local feature branches whose work is already in main |
 | `git pa reset-dev` | Rebuilds the shared dev branch from main plus the branches still in progress |
-| `git pa deploy` | Syncs dev, builds a plug-in assembly, and pushes it to the dev environment |
+| `git pa deploy` | Syncs dev, then builds and pushes a plug-in assembly or publishes changed web resources |
 
 ## Branches
 
@@ -101,8 +101,24 @@ merging and deploying for you, without your working folder ever leaving dev.
 - Configured once per repository in a committed `dataverse.json`, written for you by
   `git pa deploy --setup`: pick the environment, solution and plug-in assemblies from lists read
   from Dataverse; the project and built file for each assembly (including ILMerge output) are
-  $1- Setup keeps the rest of `dataverse.json` (like other tools' sections) and only asks before
+  found automatically.
+- Setup keeps the rest of `dataverse.json` (like other tools' sections) and only asks before
   replacing existing plug-in settings.
+
+**Web resources (`deploy --web-resources`)**
+- One step: sync dev → compare every linked file with Dataverse → upload and publish the changed
+  ones together.
+- Line endings (CRLF/LF) and a UTF-8 byte order mark don't count as changes, as in wrsync.
+- Lists the changes with who last changed each in Dataverse, highlighting ones someone else
+  changed last, before asking (`--yes` skips). `--dry-run` only lists them.
+- Skips, with a warning, links to missing files, to web resources the environment doesn't have,
+  and to managed ones.
+- Links are read from `dataverse.json` by web resource name, as written by the wrsync VS Code
+  extension's **Share Links with the Team**.
+- Signs in to Dataverse with your Microsoft account in the browser the first time (pac has no
+  web resource command); no app registration, guest accounts work, and the sign-in is cached.
+  `--sign-out` forgets it.
+- With both assemblies and web resources configured, plain `git pa deploy` asks which to deploy.
 
 ## Safety
 
@@ -116,6 +132,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | Teammate pushed to dev during `reset-dev` | The force-push is refused; nothing changes |
 | Build fails during `deploy` | Nothing is pushed to the environment |
 | A registered plug-in class is missing from the build | `deploy` stops before pushing and names the class |
+| A web resource upload fails midway | The ones already uploaded are published; the error names the one that failed |
 | Unsure what a command will do | `--dry-run` on `new`, `commit`, `sync`, `update`, `clean`, `reset-dev` and `deploy` prints the exact commands |
 
 ## Configuration
@@ -133,7 +150,8 @@ merging and deploying for you, without your working folder ever leaving dev.
 
 **`dataverse.json`** (committed in the repository): the environment URL, and in `plugins` the build
 configuration, solution, and the assemblies to deploy with their project, built file and plug-in
-assembly ID. Shared with other tools, whose sections git-pa leaves alone. The `git-pa.json` used
+assembly ID; in `webResources.links`, the web resources linked to files. Shared with other tools (wrsync
+writes the links), whose sections git-pa leaves alone. The `git-pa.json` used
 by git-pa 0.2 is still read, and `deploy` offers to move it.
 
 **Environment variable:** `GIT_PA_NO_UPDATE_CHECK=1` turns off the update check.
