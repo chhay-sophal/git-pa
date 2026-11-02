@@ -175,6 +175,23 @@ public class WebResourceDeployTests
     }
 
     [Fact]
+    public void Cli_SuggestsWhereALinkedFileWasRenamedTo()
+    {
+        var (repo, dataverse) = Setup();
+        using var _repo = repo;
+        TestRepo.Write(repo.Git, "scripts/gone.js", "function gone() {\n  // long enough for git's rename detection\n}\n");
+        TestRepo.Commit(repo.Git, "add scripts");
+        repo.Git.Run("mv", "scripts/gone.js", "scripts/renamed.js");
+        var console = new TestConsole();
+        console.Profile.Width = 300;
+
+        Assert.Equal(0, Run(repo, dataverse, console, "deploy", "-w", "--dry-run", "--skip-sync"));
+
+        Assert.Contains("new_/scripts/gone.js → scripts/gone.js (renamed to scripts/renamed.js?)", console.Output);
+        Assert.Contains("Relink renamed files in wrsync", console.Output);
+    }
+
+    [Fact]
     public void Cli_PublishesOnlyTheNamedOnes()
     {
         var (repo, dataverse) = Setup();
