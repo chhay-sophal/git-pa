@@ -116,7 +116,8 @@ merging and deploying for you, without your working folder ever leaving dev.
   wildcards (`git pa deploy -w sync_account.js "new_/forms/*"`). A name that matches nothing
   stops before anything happens.
 - Skips, with a warning, links to missing files, to web resources the environment doesn't have,
-  and to managed ones.
+  and to managed ones. For a missing file, git's rename detection suggests where it went
+  (committed, staged, or moved on disk).
 - Links are read from `dataverse.json` by web resource name, as written by the wrsync VS Code
   extension's **Share Links with the Team**.
 - Signs in to Dataverse with your Microsoft account in the browser the first time (pac has no

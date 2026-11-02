@@ -240,7 +240,8 @@ git pa deploy -w sync_account.js scripts/contact.js "new_/forms/*"
 
 `--yes` skips the checklist and publishes everything changed (or everything changed among the
 named ones). Links to files that don't exist, to web resources the environment doesn't have, or
-to managed web resources are skipped with a warning. `--dry-run` lists what would be published
+to managed web resources are skipped with a warning. When a linked file is missing because it was
+renamed or moved (committed, staged, or just moved on disk), the warning names its new path. `--dry-run` lists what would be published
 without syncing or changing anything.
 
 The links live in `dataverse.json`, by web resource name:
