@@ -3,36 +3,29 @@ using System.Text.RegularExpressions;
 namespace GitPa;
 
 /// <summary>
-/// Builds conventional branch names: chore/{title}, or {type}/{ticket}[-{title}] for the other types.
+/// Builds conventional branch names: {type}/{ticket}[-{title}], or {type}/{title} for types without a ticket
+/// (see <see cref="BranchTypes"/>).
 /// </summary>
 public static class BranchName
 {
-    public const string Chore = "chore";
     public const int MaxLength = 60;
 
-    public static readonly IReadOnlyList<string> Types = ["bugfix", "hotfix", "feature", Chore, "refactor"];
-
-    public static bool NeedsTicket(string type) => type != Chore;
-
-    public static string Build(string type, string? ticket, string? title)
+    public static string Build(BranchType type, string? ticket, string? title)
     {
-        if (!Types.Contains(type))
-            throw new GitPaException($"Unknown branch type '{type}'. Use one of: {string.Join(", ", Types)}.");
-
         var slug = Slug(title ?? "");
         string name;
-        if (type == Chore)
+        if (!type.NeedsTicket)
         {
             if (slug.Length == 0)
-                throw new GitPaException("A chore branch needs a title.");
-            name = $"{Chore}/{slug}";
+                throw new GitPaException($"A {type.Name} branch needs a title.");
+            name = $"{type.Name}/{slug}";
         }
         else
         {
             ticket = ticket?.Trim().ToUpperInvariant() ?? "";
             if (ValidateTicket(ticket) is { } error)
                 throw new GitPaException(error);
-            name = slug.Length == 0 ? $"{type}/{ticket}" : $"{type}/{ticket}-{slug}";
+            name = slug.Length == 0 ? $"{type.Name}/{ticket}" : $"{type.Name}/{ticket}-{slug}";
         }
 
         if (name.Length > MaxLength)
@@ -48,11 +41,13 @@ public static class BranchName
         : null;
 
     /// <summary>The ticket from a name like feature/PA-77-add-login, or null when the branch doesn't carry one.</summary>
-    public static string? TicketFrom(string branch)
+    public static string? TicketFrom(string branch, IReadOnlyList<BranchType> types)
     {
+        var names = types.Where(t => t.NeedsTicket).Select(t => Regex.Escape(t.Name)).ToList();
+        if (names.Count == 0)
+            return null;
         // Tickets are uppercase and titles lowercase, so the ticket ends where a lowercase part begins.
-        var types = string.Join('|', Types.Where(NeedsTicket));
-        var match = Regex.Match(branch, $"^(?:{types})/([A-Z0-9]+(?:-[A-Z0-9]+)*)(?:-[a-z0-9.].*)?$");
+        var match = Regex.Match(branch, $"^(?:{string.Join('|', names)})/([A-Z0-9]+(?:-[A-Z0-9]+)*)(?:-[a-z0-9.].*)?$");
         return match.Success ? match.Groups[1].Value : null;
     }
 
@@ -60,9 +55,9 @@ public static class BranchName
     /// Prefixes the summary with the branch's ticket ("PA-77: Add login"), so Bitbucket links the commit
     /// to Jira. Leaves it alone when the branch has no ticket or the summary already mentions it.
     /// </summary>
-    public static string WithTicketPrefix(string branch, string summary)
+    public static string WithTicketPrefix(string branch, string summary, IReadOnlyList<BranchType> types)
     {
-        var ticket = TicketFrom(branch);
+        var ticket = TicketFrom(branch, types);
         summary = summary.Trim();
         return ticket is null || summary.StartsWith(ticket, StringComparison.OrdinalIgnoreCase)
             ? summary

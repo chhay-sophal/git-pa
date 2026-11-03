@@ -29,6 +29,15 @@ git pa init                      # asks for the main and dev branch names
 git pa init --main main --dev dev
 ```
 
+To set a repository up once for the whole team, save the settings to a committed `.gitpa`
+file instead, and commit it. Teammates who clone the repository can then use git-pa without
+running `init`:
+
+```sh
+git pa init --shared --main main --dev dev
+git add .gitpa
+```
+
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
@@ -44,8 +53,10 @@ You pick the branch type and enter the details; the name is built for you:
 
 | Type | Asks for | Branch name |
 | --- | --- | --- |
-| `bugfix`, `hotfix`, `feature`, `refactor` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
-| `chore` | Title | `chore/update-nuget-packages` |
+| `bugfix`, `hotfix`, `feature`, `refactor`, `test` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
+| `chore`, `docs` | Title | `chore/update-nuget-packages` |
+
+Your team can use its own list of types instead; see [Configuration](#configuration).
 
 The title is lowercased, spaces become `-`, and characters git or shells dislike are dropped.
 Ticket numbers may contain letters, digits and dashes, and are uppercased (`pa-77` becomes
@@ -240,7 +251,8 @@ git pa deploy -w sync_account.js scripts/contact.js "new_/forms/*"
 
 `--yes` skips the checklist and publishes everything changed (or everything changed among the
 named ones). Links to files that don't exist, to web resources the environment doesn't have, or
-to managed web resources are skipped with a warning. `--dry-run` lists what would be published
+to managed web resources are skipped with a warning. When a linked file is missing because it was
+renamed or moved (committed, staged, or just moved on disk), the warning names its new path. `--dry-run` lists what would be published
 without syncing or changing anything.
 
 The links live in `dataverse.json`, by web resource name:
@@ -272,7 +284,12 @@ environment variable `GIT_PA_NO_UPDATE_CHECK=1`.
 
 ## Configuration
 
-Stored in git config (per repository, or `--global`):
+Settings are read from the first of these that has them:
+
+1. This repository's git config (`git config`, or `git pa init`): your own override.
+2. `.gitpa` at the repository root (`git pa init --shared`): the team's settings, committed.
+   It uses git config format, so `git config -f .gitpa pa.prUrl "..."` edits it too.
+3. Your global git config (`git config --global`, or `git pa init --global`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -280,11 +297,35 @@ Stored in git config (per repository, or `--global`):
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 Turn off auto-push for one repository with `git config pa.autoPush false`, or for all of
 them with `git config --global pa.autoPush false`.
+
+### Branch types
+
+`pa.branchTypes` lists the types `git pa new` offers, in order, separated by spaces or commas.
+Add `:noticket` to a type that takes a title instead of a ticket number. When it isn't set, the
+default is:
+
+```
+bugfix hotfix feature chore:noticket refactor test docs:noticket
+```
+
+Set the team's list with `git pa init --shared --main main --dev dev --branch-types "feature bugfix spike chore:noticket"`
+and commit `.gitpa`. Without `--shared` it's saved for just you (`--global` for all your
+repositories), and `default` goes back to the built-in list. Commits on any type that takes a
+ticket get the ticket prefix.
+
+```ini
+# .gitpa
+[pa]
+	main = main
+	dev = dev
+	branchTypes = feature bugfix spike chore:noticket
+```
 
 ## Development
 

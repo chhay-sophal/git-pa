@@ -159,8 +159,15 @@ static class DeployCommand
         cli.Reporter.Step($"Comparing {WebResourceDeploy.Plural(links.Count, "linked web resource")} with {deploy.Environment}");
         var comparison = WebResourceDeploy.Compare(git.WorkingDirectory, links, dataverse);
         if (comparison.MissingFiles.Count > 0)
+        {
+            var renamed = comparison.MissingFiles.Select(l => RenamedFiles.Find(git, l.File)).ToList();
             cli.Reporter.Warn("Skipped, the linked file doesn't exist:\n  " +
-                string.Join("\n  ", comparison.MissingFiles.Select(l => $"{l.Name} → {l.File}")));
+                string.Join("\n  ", comparison.MissingFiles.Select((l, i) =>
+                    $"{l.Name} → {l.File}" + (renamed[i] is { } to ? $" (renamed to {to}?)" : ""))) +
+                (renamed.Any(r => r is not null)
+                    ? $"\nRelink renamed files in wrsync, or update their \"file\" in {DeployConfig.FileName}."
+                    : ""));
+        }
         if (comparison.NotInEnvironment.Count > 0)
             cli.Reporter.Warn($"Skipped, not in {deploy.Environment} (create them there first):\n  " +
                 string.Join("\n  ", comparison.NotInEnvironment.Select(l => l.Name)));

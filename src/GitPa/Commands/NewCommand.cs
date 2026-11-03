@@ -12,9 +12,12 @@ static class NewCommand
             Description = "Exact branch name, instead of building one from type, ticket and title",
             Arity = ArgumentArity.ZeroOrOne,
         };
-        var typeOption = new Option<string>("--type", "-t") { Description = $"Branch type: {string.Join(", ", BranchName.Types)}" };
-        var ticketOption = new Option<string>("--ticket") { Description = "Ticket number (all types except chore)" };
-        var titleOption = new Option<string>("--title") { Description = "Short title (required for chore, optional otherwise)" };
+        var typeOption = new Option<string>("--type", "-t")
+        {
+            Description = $"Branch type: {string.Join(", ", BranchTypes.Default.Select(t => t.Name))}, or the ones in {BranchTypes.Key}",
+        };
+        var ticketOption = new Option<string>("--ticket") { Description = "Ticket number (for types that take one)" };
+        var titleOption = new Option<string>("--title") { Description = "Short title (required for types without a ticket, optional otherwise)" };
         var dryRunOption = Cli.DryRunOption();
 
         var command = new Command("new", "Create a branch from the latest main, staying on dev")
@@ -31,7 +34,7 @@ static class NewCommand
                 (parseResult.GetValue(typeOption), parseResult.GetValue(ticketOption), parseResult.GetValue(titleOption));
             if (name is not null && (type ?? ticket ?? title) is not null)
                 throw new GitPaException("Give either a branch name or --type/--ticket/--title, not both.");
-            name ??= BuildName(cli, type, ticket, title);
+            name ??= BuildName(cli, BranchTypes.Load(git), type, ticket, title);
 
             if (parseResult.GetValue(dryRunOption))
                 return cli.PrintPlan(NewBranchOperation.Plan(git, config, name));
@@ -44,16 +47,14 @@ static class NewCommand
     }
 
     /// <summary>Builds the name from the options, asking for whatever is missing when interactive.</summary>
-    static string BuildName(Cli cli, string? type, string? ticket, string? title)
+    static string BuildName(Cli cli, IReadOnlyList<BranchType> types, string? typeName, string? ticket, string? title)
     {
-        type = cli.Require(type, "--type (or a branch name)", () => cli.Console.Prompt(new SelectionPrompt<string>()
+        typeName = cli.Require(typeName, "--type (or a branch name)", () => cli.Console.Prompt(new SelectionPrompt<string>()
             .Title("Branch type:")
-            .AddChoices(BranchName.Types)));
-        type = type.Trim().ToLowerInvariant();
-        if (!BranchName.Types.Contains(type))
-            throw new GitPaException($"Unknown branch type '{type}'. Use one of: {string.Join(", ", BranchName.Types)}.");
+            .AddChoices(types.Select(t => t.Name))));
+        var type = BranchTypes.Find(types, typeName);
 
-        if (BranchName.NeedsTicket(type))
+        if (type.NeedsTicket)
         {
             ticket = cli.Require(ticket, "--ticket", () => cli.Console.Prompt(new TextPrompt<string>("Ticket number:")
                 .Validate(t => BranchName.ValidateTicket(t.Trim()) is { } error
@@ -76,7 +77,7 @@ static class NewCommand
         return name;
     }
 
-    static ValidationResult Check(string type, string? ticket, string title)
+    static ValidationResult Check(BranchType type, string? ticket, string title)
     {
         try
         {

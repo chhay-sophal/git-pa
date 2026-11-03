@@ -10,7 +10,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 
 | Command | What it does |
 | --- | --- |
-| `git pa init` | Saves the main and dev branch names for the repository (or globally) |
+| `git pa init` | Saves the main and dev branch names for the repository, globally, or in a committed `.gitpa` for the team |
 | `git pa new` | Creates a branch from the latest main, named from type, ticket and title |
 | `git pa commit` | Commits chosen changes to a feature branch, merges it into dev, and pushes |
 | `git pa sync` | Pulls the latest remote dev into dev, keeping uncommitted changes |
@@ -24,8 +24,12 @@ merging and deploying for you, without your working folder ever leaving dev.
 ## Branches
 
 **Creating branches (`new`)**
-- Pick a type: `bugfix`, `hotfix`, `feature`, `chore` or `refactor`.
-- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`.
+- Pick a type: `bugfix`, `hotfix`, `feature`, `chore`, `refactor`, `test` or `docs`.
+- Or your own types: set `pa.branchTypes` (or `git pa init --branch-types`), marking the ones
+  without a ticket with `:noticket`, like `feature spike chore:noticket`. Save it to `.gitpa` with
+  `--shared` so the whole team gets the same list.
+- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`;
+  `chore` and `docs` take a title instead of a ticket.
 - Ticket numbers are uppercased; titles are lowercased with spaces turned into `-`, and characters
   git or shells dislike are dropped.
 - Branch names are limited to 60 characters, checked while you type.
@@ -116,7 +120,8 @@ merging and deploying for you, without your working folder ever leaving dev.
   wildcards (`git pa deploy -w sync_account.js "new_/forms/*"`). A name that matches nothing
   stops before anything happens.
 - Skips, with a warning, links to missing files, to web resources the environment doesn't have,
-  and to managed ones.
+  and to managed ones. For a missing file, git's rename detection suggests where it went
+  (committed, staged, or moved on disk).
 - Links are read from `dataverse.json` by web resource name, as written by the wrsync VS Code
   extension's **Share Links with the Team**.
 - Signs in to Dataverse with your Microsoft account in the browser the first time (pac has no
@@ -141,7 +146,10 @@ merging and deploying for you, without your working folder ever leaving dev.
 
 ## Configuration
 
-**Git config** (per repository, or `--global`)
+**Git config and `.gitpa`.** Each setting comes from the first place that has it: this repository's
+git config (a personal override), the committed `.gitpa` file at the root (the team's settings, in git
+config format, written by `git pa init --shared`), then the global git config. With `.gitpa` committed,
+teammates don't need to run `init`.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -149,6 +157,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
