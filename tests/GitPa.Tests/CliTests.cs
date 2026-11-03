@@ -58,6 +58,41 @@ public class CliTests
     }
 
     [Fact]
+    public void New_UsesConfiguredBranchTypes()
+    {
+        using var repo = new TestRepo();
+        repo.Git.Run("config", BranchTypes.Key, "story notes:noticket");
+        var console = InteractiveConsole();
+        console.Input.PushKey(ConsoleKey.DownArrow); // story -> notes
+        console.Input.PushKey(ConsoleKey.Enter);
+        console.Input.PushTextWithEnter("Release notes");
+
+        Assert.Equal(0, Run(repo, console, "new"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "story", "--ticket", "PA-1"));
+        var unknown = new TestConsole();
+        Assert.NotEqual(0, Run(repo, unknown, "new", "-t", "feature", "--ticket", "PA-2"));
+
+        Assert.True(repo.Git.LocalBranchExists("notes/release-notes"));
+        Assert.True(repo.Git.LocalBranchExists("story/PA-1"));
+        Assert.Contains("story, notes", unknown.Output);
+    }
+
+    [Fact]
+    public void Init_SavesAndResetsBranchTypes()
+    {
+        using var repo = new TestRepo();
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--branch-types", "Story,notes:noticket"));
+        Assert.Equal("story notes:noticket", PaConfig.Get(repo.Git, BranchTypes.Key));
+
+        Assert.NotEqual(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--branch-types", "a/b"));
+        Assert.Equal("story notes:noticket", PaConfig.Get(repo.Git, BranchTypes.Key));
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--branch-types", "default"));
+        Assert.Null(PaConfig.Get(repo.Git, BranchTypes.Key));
+    }
+
+    [Fact]
     public void Commit_PicksFilesBranchAndMessageInteractively()
     {
         using var repo = new TestRepo();
