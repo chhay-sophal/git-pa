@@ -52,7 +52,7 @@ public class ResetDevOperationTests
         using var repo = RepoWithFeaturesInDev();
         var teammate = repo.Clone("teammate");
         teammate.Run("switch", "--quiet", "dev");
-        PaConfig.Save(teammate, "main", "dev", global: false);
+        PaConfig.Save(teammate, "main", "dev", ConfigScope.Local);
         TestRepo.Write(teammate, "direct.txt", "committed straight to dev\n");
         TestRepo.Commit(teammate, "direct dev commit");
         TestRepo.Write(teammate, "wip.txt", "work in progress\n");
@@ -79,7 +79,7 @@ public class ResetDevOperationTests
         using var repo = RepoWithFeaturesInDev();
         var teammate = repo.Clone("teammate");
         teammate.Run("switch", "--quiet", "dev");
-        PaConfig.Save(teammate, "main", "dev", global: false);
+        PaConfig.Save(teammate, "main", "dev", ConfigScope.Local);
         Reset(repo, "feat/a");
         TestRepo.Write(teammate, "feat-a.txt", "teammate improves feat/a\n");
         teammate.Run("add", "feat-a.txt");

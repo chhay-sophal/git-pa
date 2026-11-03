@@ -17,11 +17,19 @@ static class InitCommand
         {
             Description = "Save to your global git config instead of this repository",
         };
+        var sharedOption = new Option<bool>("--shared")
+        {
+            Description = $"Save to {PaConfig.SharedFileName} at the repository root, to commit for your team",
+        };
 
-        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, typesOption, globalOption };
+        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, typesOption, globalOption, sharedOption };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var global = parseResult.GetValue(globalOption);
+            var shared = parseResult.GetValue(sharedOption);
+            if (global && shared)
+                throw new GitPaException("Use either --global or --shared, not both.");
+            var scope = global ? ConfigScope.Global : shared ? ConfigScope.Shared : ConfigScope.Local;
             var git = global ? new GitRunner(cli.WorkingDirectory) : cli.OpenRepository();
 
             var main = cli.Require(parseResult.GetValue(mainOption), "--main",
@@ -39,10 +47,16 @@ static class InitCommand
             if (types is not null && types.Trim() != "default")
                 BranchTypes.Parse(types); // check before saving anything
 
-            PaConfig.Save(git, main, dev, global);
-            var savedTypes = types is null ? "" : $", branch types = {SaveBranchTypes(git, types.Trim(), global)}";
+            PaConfig.Save(git, main, dev, scope);
+            var savedTypes = types is null ? "" : $", branch types = {SaveBranchTypes(git, types.Trim(), scope)}";
             WarnIfMissing(cli, git, main, dev);
-            cli.Success($"Saved main = {main}, dev = {dev}{savedTypes}{(global ? " (global)" : "")}");
+            var where = scope switch
+            {
+                ConfigScope.Global => " (global)",
+                ConfigScope.Shared => $" to {PaConfig.SharedFileName}; commit it to share it with your team",
+                _ => "",
+            };
+            cli.Success($"Saved main = {main}, dev = {dev}{savedTypes}{where}");
             return 0;
         }));
         return command;
@@ -61,16 +75,15 @@ static class InitCommand
     }
 
     /// <summary>Saves pa.branchTypes ("default" unsets it) and returns what was saved.</summary>
-    static string SaveBranchTypes(GitRunner git, string types, bool global)
+    static string SaveBranchTypes(GitRunner git, string types, ConfigScope scope)
     {
-        var scope = global ? "--global" : "--local";
         if (types == "default")
         {
-            git.TryRun("config", scope, "--unset", BranchTypes.Key); // fine when it isn't set
+            PaConfig.Unset(git, scope, BranchTypes.Key);
             return $"{BranchTypes.Format(BranchTypes.Default)} (default)";
         }
         var formatted = BranchTypes.Format(BranchTypes.Parse(types));
-        git.Run("config", scope, BranchTypes.Key, formatted);
+        PaConfig.Set(git, scope, BranchTypes.Key, formatted);
         return formatted;
     }
 

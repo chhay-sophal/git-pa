@@ -19,7 +19,7 @@ sealed class TestRepo : IDisposable
         Git.Run("push", "--quiet", "-u", "origin", "main");
         Git.Run("switch", "--quiet", "-c", "dev");
         Git.Run("push", "--quiet", "-u", "origin", "dev");
-        PaConfig.Save(Git, "main", "dev", global: false);
+        PaConfig.Save(Git, "main", "dev", ConfigScope.Local);
     }
 
     public GitRunner Git { get; }
