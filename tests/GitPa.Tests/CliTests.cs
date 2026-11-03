@@ -78,6 +78,25 @@ public class CliTests
     }
 
     [Fact]
+    public void Init_Shared_WritesTeamFileThatTeammatesUse()
+    {
+        using var repo = new TestRepo();
+        var console = new TestConsole();
+
+        Assert.Equal(0, Run(repo, console, "init", "--shared", "--main", "main", "--dev", "dev", "--branch-types", "story notes:noticket"));
+        Assert.Contains("commit it", console.Output);
+        Assert.NotEqual(0, Run(repo, new TestConsole(), "init", "--shared", "--global", "--main", "main", "--dev", "dev"));
+
+        TestRepo.Commit(repo.Git, "share git-pa settings");
+        repo.Git.Run("push", "--quiet", "origin", "dev");
+        var teammate = repo.Clone("teammate");
+        teammate.Run("switch", "--quiet", "dev");
+
+        Assert.Equal(("main", "dev"), (PaConfig.Load(teammate).Main, PaConfig.Load(teammate).Dev));
+        Assert.Equal("story notes:noticket", BranchTypes.Format(BranchTypes.Load(teammate)));
+    }
+
+    [Fact]
     public void Init_SavesAndResetsBranchTypes()
     {
         using var repo = new TestRepo();
