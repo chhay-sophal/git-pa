@@ -29,6 +29,15 @@ git pa init                      # asks for the main and dev branch names
 git pa init --main main --dev dev
 ```
 
+To set a repository up once for the whole team, save the settings to a committed `.gitpa`
+file instead, and commit it. Teammates who clone the repository can then use git-pa without
+running `init`:
+
+```sh
+git pa init --shared --main main --dev dev
+git add .gitpa
+```
+
 ## Commands
 
 Use `git pa <command> -h` for help (`--help` is intercepted by git itself).
@@ -275,7 +284,12 @@ environment variable `GIT_PA_NO_UPDATE_CHECK=1`.
 
 ## Configuration
 
-Stored in git config (per repository, or `--global`):
+Settings are read from the first of these that has them:
+
+1. This repository's git config (`git config`, or `git pa init`): your own override.
+2. `.gitpa` at the repository root (`git pa init --shared`): the team's settings, committed.
+   It uses git config format, so `git config -f .gitpa pa.prUrl "..."` edits it too.
+3. Your global git config (`git config --global`, or `git pa init --global`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -300,10 +314,18 @@ default is:
 bugfix hotfix feature chore:noticket refactor test docs:noticket
 ```
 
-Set your own with `git config pa.branchTypes "feature bugfix spike chore:noticket"`, or with
-`git pa init --branch-types "..."` (add `--global` for all your repositories, and use `default`
-to go back to the built-in list). Commits on any type that takes a ticket get the ticket prefix.
-Git config isn't committed, so each developer sets it.
+Set the team's list with `git pa init --shared --main main --dev dev --branch-types "feature bugfix spike chore:noticket"`
+and commit `.gitpa`. Without `--shared` it's saved for just you (`--global` for all your
+repositories), and `default` goes back to the built-in list. Commits on any type that takes a
+ticket get the ticket prefix.
+
+```ini
+# .gitpa
+[pa]
+	main = main
+	dev = dev
+	branchTypes = feature bugfix spike chore:noticket
+```
 
 ## Development
 
