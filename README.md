@@ -44,8 +44,10 @@ You pick the branch type and enter the details; the name is built for you:
 
 | Type | Asks for | Branch name |
 | --- | --- | --- |
-| `bugfix`, `hotfix`, `feature`, `refactor` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
-| `chore` | Title | `chore/update-nuget-packages` |
+| `bugfix`, `hotfix`, `feature`, `refactor`, `test` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
+| `chore`, `docs` | Title | `chore/update-nuget-packages` |
+
+Your team can use its own list of types instead; see [Configuration](#configuration).
 
 The title is lowercased, spaces become `-`, and characters git or shells dislike are dropped.
 Ticket numbers may contain letters, digits and dashes, and are uppercased (`pa-77` becomes
@@ -281,11 +283,27 @@ Stored in git config (per repository, or `--global`):
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 Turn off auto-push for one repository with `git config pa.autoPush false`, or for all of
 them with `git config --global pa.autoPush false`.
+
+### Branch types
+
+`pa.branchTypes` lists the types `git pa new` offers, in order, separated by spaces or commas.
+Add `:noticket` to a type that takes a title instead of a ticket number. When it isn't set, the
+default is:
+
+```
+bugfix hotfix feature chore:noticket refactor test docs:noticket
+```
+
+Set your own with `git config pa.branchTypes "feature bugfix spike chore:noticket"`, or with
+`git pa init --branch-types "..."` (add `--global` for all your repositories, and use `default`
+to go back to the built-in list). Commits on any type that takes a ticket get the ticket prefix.
+Git config isn't committed, so each developer sets it.
 
 ## Development
 

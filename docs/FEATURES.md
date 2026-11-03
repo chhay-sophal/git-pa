@@ -24,8 +24,11 @@ merging and deploying for you, without your working folder ever leaving dev.
 ## Branches
 
 **Creating branches (`new`)**
-- Pick a type: `bugfix`, `hotfix`, `feature`, `chore` or `refactor`.
-- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`.
+- Pick a type: `bugfix`, `hotfix`, `feature`, `chore`, `refactor`, `test` or `docs`.
+- Or your own types: set `pa.branchTypes` (or `git pa init --branch-types`), marking the ones
+  without a ticket with `:noticket`, like `feature spike chore:noticket`.
+- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`;
+  `chore` and `docs` take a title instead of a ticket.
 - Ticket numbers are uppercased; titles are lowercased with spaces turned into `-`, and characters
   git or shells dislike are dropped.
 - Branch names are limited to 60 characters, checked while you type.
@@ -150,6 +153,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
