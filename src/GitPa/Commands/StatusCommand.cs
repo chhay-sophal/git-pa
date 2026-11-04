@@ -9,7 +9,7 @@ static class StatusCommand
     {
         var fetchOption = new Option<bool>("--fetch", "-f") { Description = "Fetch from the remote first" };
 
-        var command = new Command("status", "Show feature branches compared with main, dev, and the remote") { fetchOption };
+        var command = new Command("status", "Show feature branches compared with main, dev, the stages, and the remote") { fetchOption };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var git = cli.OpenRepository();
@@ -40,15 +40,18 @@ static class StatusCommand
         }
 
         var table = new Table().Border(TableBorder.Rounded)
-            .AddColumns("Branch", "Last commit", $"vs {status.MainRef}", $"In {status.Dev}", "Remote");
+            .AddColumns(["Branch", "Last commit", $"vs {status.MainRef}", $"In {status.Dev}",
+                .. status.Stages.Select(s => $"In {s}"), "Remote"]);
         foreach (var b in status.Branches)
         {
-            table.AddRow(
+            table.AddRow([
                 Markup.Escape(b.Name),
                 Markup.Escape(b.LastCommit),
                 VsMain(b),
-                b.NotInDev == 0 ? "[green]yes[/]" : $"[yellow]{Plural(b.NotInDev, "commit")} missing[/]",
-                Remote(b));
+                InBranch(b.NotInDev),
+                .. b.NotInStages.Select(n => n is { } missing ? InBranch(missing) : "[grey]no branch[/]"),
+                Remote(b),
+            ]);
         }
         console.Write(table);
         console.MarkupLine("[grey]As of the last fetch. Use --fetch to update first.[/]");
@@ -67,6 +70,8 @@ static class StatusCommand
             parts.Add($"{Plural(status.DevToPush, "commit")} not pushed");
         return parts.Count == 0 ? $"up to date with {status.DevUpstream}" : string.Join("; ", parts);
     }
+
+    static string InBranch(int missing) => missing == 0 ? "[green]yes[/]" : $"[yellow]{Plural(missing, "commit")} missing[/]";
 
     static string VsMain(BranchStatus b) => (b.AheadOfMain, b.BehindMain) switch
     {
