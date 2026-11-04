@@ -13,13 +13,19 @@ public static class Branches
         throw new GitPaException($"Main branch '{config.Main}' was not found locally or on {config.Remote}.");
     }
 
-    /// <summary>Local branches other than main and dev, most recently committed first.</summary>
+    /// <summary>The newest known copy of a branch (remote-tracking, else local), or null when there is none.</summary>
+    public static string? Latest(GitRunner git, PaConfig config, string branch) =>
+        git.RemoteBranchExists(config.Remote, branch) ? $"{config.Remote}/{branch}"
+        : git.LocalBranchExists(branch) ? branch
+        : null;
+
+    /// <summary>Local branches other than main, dev and the stages, most recently committed first.</summary>
     public static IReadOnlyList<string> LocalFeatures(GitRunner git, PaConfig config) =>
-        git.LocalBranches().Where(b => b != config.Main && b != config.Dev).ToList();
+        git.LocalBranches().Where(b => !config.IsLongLived(b)).ToList();
 
     public static void EnsureFeature(PaConfig config, string branch)
     {
-        if (branch == config.Main || branch == config.Dev)
+        if (config.IsLongLived(branch))
             throw new GitPaException($"'{branch}' is not a feature branch.");
     }
 

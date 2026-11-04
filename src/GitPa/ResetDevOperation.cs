@@ -22,7 +22,7 @@ public static class ResetDevOperation
         foreach (var (name, (localRef, localDate)) in local.Concat(remote.Where(r => !local.ContainsKey(r.Key)))
                      .ToDictionary(p => p.Key, p => p.Value))
         {
-            if (name == config.Main || name == config.Dev || name == "HEAD")
+            if (config.IsLongLived(name) || name == "HEAD")
                 continue;
 
             // Prefer the local branch unless the remote copy has commits it lacks.

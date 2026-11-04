@@ -18,6 +18,7 @@ public static class GitPaCli
             SyncCommand.Create(cli),
             StatusCommand.Create(cli),
             UpdateCommand.Create(cli),
+            PromoteCommand.Create(cli),
             PrCommand.Create(cli),
             CleanCommand.Create(cli),
             ResetDevCommand.Create(cli),

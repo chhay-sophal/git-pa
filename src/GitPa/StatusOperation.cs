@@ -25,7 +25,7 @@ public static class StatusOperation
                 "--format=%(refname:short)%09%(committerdate:relative)", "refs/heads")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('\t', 2))
-            .Where(parts => parts[0] != config.Main && parts[0] != config.Dev)
+            .Where(parts => !config.IsLongLived(parts[0]))
             .Select(parts =>
             {
                 var name = parts[0];
