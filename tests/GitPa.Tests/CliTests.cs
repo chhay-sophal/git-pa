@@ -97,6 +97,65 @@ public class CliTests
     }
 
     [Fact]
+    public void Init_SavesStages_AndPromoteUsesThem()
+    {
+        using var repo = new TestRepo();
+        var noStages = new TestConsole();
+        Assert.NotEqual(0, Run(repo, noStages, "promote", "feature/1"));
+        Assert.Contains("--stages uat", noStages.Output);
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--stages", "uat"));
+        Assert.Equal("uat", PaConfig.Get(repo.Git, PaConfig.StagesKey));
+        Assert.NotEqual(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--stages", "dev"));
+
+        repo.Git.Run("branch", "--quiet", "uat", "origin/main");
+        repo.Git.Run("push", "--quiet", "-u", "origin", "uat");
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        TestRepo.Write(repo.Git, "a.txt", "a\n");
+        Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/1", "-m", "add a", "--all"));
+
+        var dryRun = new TestConsole();
+        Assert.Equal(0, Run(repo, dryRun, "promote", "feature/1", "--dry-run"));
+        Assert.Contains("merge --no-ff --no-edit feature/1", dryRun.Output);
+
+        var promote = new TestConsole();
+        Assert.Equal(0, Run(repo, promote, "promote", "feature/1"));
+        Assert.Contains("Merged feature/1 into uat", promote.Output);
+        Assert.True(repo.Git.Succeeds("cat-file", "-e", "origin/uat:a.txt"));
+
+        var again = new TestConsole();
+        again.Profile.Width = 200;
+        Assert.Equal(0, Run(repo, again, "promote", "feature/1"));
+        Assert.Contains("git pa pr feature/1", again.Output);
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "init", "--main", "main", "--dev", "dev", "--stages", "none"));
+        Assert.Null(PaConfig.Get(repo.Git, PaConfig.StagesKey));
+    }
+
+    [Fact]
+    public void Pr_WarnsWhenFeatureIsNotInTheLastStage()
+    {
+        using var repo = new TestRepo();
+        repo.Git.Run("config", PaConfig.StagesKey, "uat");
+        repo.Git.Run("config", PullRequestUrl.TemplateKey, "https://example.com/pr?from={branch}&to={target}");
+        repo.Git.Run("branch", "--quiet", "uat", "origin/main");
+        repo.Git.Run("push", "--quiet", "-u", "origin", "uat");
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        TestRepo.Write(repo.Git, "a.txt", "a\n");
+        Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/1", "-m", "add a", "--all"));
+
+        var before = new TestConsole();
+        before.Profile.Width = 200;
+        Assert.Equal(0, Run(repo, before, "pr", "feature/1", "--print"));
+        Assert.Contains("git pa promote feature/1", before.Output);
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "promote", "feature/1"));
+        var after = new TestConsole();
+        Assert.Equal(0, Run(repo, after, "pr", "feature/1", "--print"));
+        Assert.DoesNotContain("promote", after.Output);
+    }
+
+    [Fact]
     public void Init_SavesAndResetsBranchTypes()
     {
         using var repo = new TestRepo();
