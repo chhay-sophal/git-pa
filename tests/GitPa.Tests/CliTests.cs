@@ -150,6 +150,10 @@ public class CliTests
         Assert.Contains("git pa promote feature/1", before.Output);
 
         Assert.Equal(0, Run(repo, new TestConsole(), "promote", "feature/1"));
+        var status = new TestConsole();
+        status.Profile.Width = 200;
+        Assert.Equal(0, Run(repo, status, "status"));
+        Assert.Contains("In uat", status.Output);
         var after = new TestConsole();
         Assert.Equal(0, Run(repo, after, "pr", "feature/1", "--print"));
         Assert.DoesNotContain("promote", after.Output);
