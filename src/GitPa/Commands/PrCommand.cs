@@ -30,6 +30,8 @@ static class PrCommand
             if (!git.LocalBranchExists(branch) && !git.RemoteBranchExists(config.Remote, branch))
                 throw new GitPaException($"Branch '{branch}' does not exist.");
 
+            WarnIfNotInLastStage(cli, git, config, branch);
+
             var remoteUrl = git.TryRun("remote", "get-url", config.Remote);
             if (!remoteUrl.Success)
                 throw new GitPaException($"There is no remote named '{config.Remote}'.");
@@ -60,6 +62,24 @@ static class PrCommand
             return 0;
         }));
         return command;
+    }
+
+    /// <summary>A feature should reach main only after passing the last stage (like uat); say so when it hasn't.</summary>
+    static void WarnIfNotInLastStage(Cli cli, GitRunner git, PaConfig config, string branch)
+    {
+        if (config.Stages.Count == 0)
+            return;
+        var stage = config.Stages[^1];
+        var feature = git.LocalBranchExists(branch) ? branch : Branches.Latest(git, config, branch);
+        if (feature is null)
+            return;
+        var stageRef = Branches.Latest(git, config, stage);
+        var missing = stageRef is null ? -1 : int.Parse(git.Run("rev-list", "--count", "--no-merges", $"{stageRef}..{feature}"));
+        if (missing != 0)
+            cli.Reporter.Warn(
+                (missing < 0 ? $"There is no {stage} branch yet, so {branch} hasn't been through {stage}."
+                    : $"{branch} has {missing} commit{(missing == 1 ? "" : "s")} that {(missing == 1 ? "isn't" : "aren't")} in {stageRef} yet.") +
+                $" Promote it first with: git pa promote {branch}");
     }
 
     static bool OpenBrowser(string url)
