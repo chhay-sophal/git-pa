@@ -16,6 +16,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | `git pa sync` | Pulls the latest remote dev into dev, keeping uncommitted changes |
 | `git pa status` | Shows dev and every feature branch compared with main, dev and the remote |
 | `git pa update` | Merges the latest main into a feature branch without switching to it |
+| `git pa promote` | Merges one feature branch into the next stage, like uat, without switching to it |
 | `git pa pr` | Opens the "create pull request" page from a feature branch to main |
 | `git pa clean` | Deletes local feature branches whose work is already in main |
 | `git pa reset-dev` | Rebuilds the shared dev branch from main plus the branches still in progress |
@@ -41,7 +42,15 @@ merging and deploying for you, without your working folder ever leaving dev.
 - `--all` updates every local feature branch, reporting each failure and carrying on.
 - On a conflict nothing changes, and it shows how to resolve it in a separate folder.
 
+**Stages like UAT (`promote`)**
+- For dev → uat → main (or more stages): list them in `pa.stages`, e.g. `git pa init --shared --stages uat`.
+- `promote` merges one feature branch into the next stage it isn't in yet, in a hidden working folder,
+  and pushes it. Other work in dev stays out, so only approved features reach UAT.
+- Warns when the feature skipped the stage before (dev for uat). `--to` picks the stage.
+- `status` shows a column per stage; `clean` and `reset-dev` never touch stage branches.
+
 **Pull requests (`pr`)**
+- Each feature still goes to main through its own PR, with a warning if it isn't in the last stage yet.
 - Works with GitHub, Azure DevOps, Bitbucket Cloud and Bitbucket Server.
 - Understands SSH host aliases from `~/.ssh/config` (like `git@github-work:...`).
 - Pushes the branch first if it isn't on the remote yet.
@@ -157,6 +166,7 @@ teammates don't need to run `init`.
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
 | `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |

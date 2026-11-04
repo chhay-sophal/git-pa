@@ -2,14 +2,18 @@ namespace GitPa;
 
 /// <param name="ToPush">Commits not on the remote copy, or null when the branch was never pushed.</param>
 /// <param name="ToPull">Commits on the remote copy that aren't local, or null when the branch was never pushed.</param>
+/// <param name="NotInStages">Per stage (in <see cref="RepoStatus.Stages"/> order), the branch's commits it doesn't
+/// have yet, or null when that stage branch doesn't exist.</param>
 public sealed record BranchStatus(
-    string Name, string LastCommit, int AheadOfMain, int BehindMain, int NotInDev, int? ToPush, int? ToPull);
+    string Name, string LastCommit, int AheadOfMain, int BehindMain, int NotInDev, int? ToPush, int? ToPull,
+    IReadOnlyList<int?> NotInStages);
 
 /// <param name="DevUpstream">The remote dev branch, or null when there is none.</param>
 /// <param name="DevWasReset">Whether the remote dev was rebuilt by reset-dev since the local dev last synced.</param>
+/// <param name="Stages">The stage branches between dev and main, like uat.</param>
 public sealed record RepoStatus(
     string MainRef, string Dev, string? DevUpstream, int DevToPush, int DevToPull, bool DevWasReset,
-    IReadOnlyList<BranchStatus> Branches);
+    IReadOnlyList<BranchStatus> Branches, IReadOnlyList<string> Stages);
 
 /// <summary>Reports how each feature branch relates to main, dev, and its remote copy, as of the last fetch.</summary>
 public static class StatusOperation
@@ -20,12 +24,13 @@ public static class StatusOperation
         var mainRef = Branches.LatestMain(git, config);
         var devUpstream = git.RemoteBranchExists(remote, config.Dev) ? $"{remote}/{config.Dev}" : null;
         var (devToPull, devToPush) = devUpstream is null ? (0, 0) : Count(git, devUpstream, config.Dev);
+        var stageRefs = config.Stages.Select(s => Branches.Latest(git, config, s)).ToList();
 
         var branches = git.Run("for-each-ref", "--sort=-committerdate",
                 "--format=%(refname:short)%09%(committerdate:relative)", "refs/heads")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('\t', 2))
-            .Where(parts => parts[0] != config.Main && parts[0] != config.Dev)
+            .Where(parts => !config.IsLongLived(parts[0]))
             .Select(parts =>
             {
                 var name = parts[0];
@@ -36,12 +41,15 @@ public static class StatusOperation
                 int? toPull = null, toPush = null;
                 if (git.RemoteBranchExists(remote, name))
                     (toPull, toPush) = Count(git, $"{remote}/{name}", name);
-                return new BranchStatus(name, parts[1], ahead, behind, notInDev, toPush, toPull);
+                var notInStages = stageRefs
+                    .Select(r => r is null ? (int?)null : int.Parse(git.Run("rev-list", "--count", $"{r}..{name}")))
+                    .ToList();
+                return new BranchStatus(name, parts[1], ahead, behind, notInDev, toPush, toPull, notInStages);
             })
             .ToList();
 
         var devWasReset = devUpstream is not null && DevBranch.WasReset(git, devUpstream);
-        return new RepoStatus(mainRef, config.Dev, devUpstream, devToPush, devToPull, devWasReset, branches);
+        return new RepoStatus(mainRef, config.Dev, devUpstream, devToPush, devToPull, devWasReset, branches, config.Stages);
     }
 
     /// <summary>Counts commits only on <paramref name="left"/> and only on <paramref name="right"/>.</summary>

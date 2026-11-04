@@ -20,10 +20,20 @@ public enum ConfigScope
 /// </summary>
 public sealed record PaConfig(string Main, string Dev, string Remote, bool AutoPush)
 {
+    /// <summary>
+    /// Branches between dev and main that features are promoted through, in order (like uat), from pa.stages.
+    /// Empty when features go straight from dev to main.
+    /// </summary>
+    public IReadOnlyList<string> Stages { get; init; } = [];
+
+    /// <summary>main, dev and the stages: the shared branches that aren't feature branches.</summary>
+    public bool IsLongLived(string branch) => branch == Main || branch == Dev || Stages.Contains(branch);
+
     public const string MainKey = "pa.main";
     public const string DevKey = "pa.dev";
     public const string RemoteKey = "pa.remote";
     public const string AutoPushKey = "pa.autoPush";
+    public const string StagesKey = "pa.stages";
     public const string DefaultRemote = "origin";
 
     /// <summary>The team's settings, committed at the repository root in git config format.</summary>
@@ -38,7 +48,29 @@ public sealed record PaConfig(string Main, string Dev, string Remote, bool AutoP
                 "git-pa is not configured for this repository. Run `git pa init` first " +
                 $"(with --shared to save it in {SharedFileName} for your team).");
 
-        return new PaConfig(main, dev, Get(git, RemoteKey) ?? DefaultRemote, LoadAutoPush(git));
+        return new PaConfig(main, dev, Get(git, RemoteKey) ?? DefaultRemote, LoadAutoPush(git))
+        {
+            Stages = Get(git, StagesKey) is { } stages ? ParseStages(git, stages, main, dev) : [],
+        };
+    }
+
+    /// <summary>Branch names separated by spaces or commas; "none" (or nothing) means no stages.</summary>
+    public static IReadOnlyList<string> ParseStages(GitRunner git, string value, string main, string dev)
+    {
+        var stages = new List<string>();
+        foreach (var name in value.Split([' ', ',', '\t'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (name == "none")
+                continue;
+            if (!git.IsValidBranchName(name))
+                throw new GitPaException($"'{name}' in {StagesKey} is not a valid branch name.");
+            if (name == main || name == dev)
+                throw new GitPaException($"{StagesKey} lists the branches between {dev} and {main}, so it can't include '{name}'.");
+            if (stages.Contains(name))
+                throw new GitPaException($"'{name}' appears more than once in {StagesKey}.");
+            stages.Add(name);
+        }
+        return stages;
     }
 
     public static string? Get(GitRunner git, string key)

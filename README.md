@@ -116,8 +116,8 @@ everyone's work, not just yours.
 ### `git pa status`
 
 Shows whether dev is behind or ahead of the remote, and a table of your feature branches:
-how far each is ahead of or behind main, whether it is fully merged into dev, and whether it
-has been pushed. Add `--fetch` to fetch from the remote first.
+how far each is ahead of or behind main, whether it is fully merged into dev (and into each
+stage, like uat), and whether it has been pushed. Add `--fetch` to fetch from the remote first.
 
 ### `git pa update [branch]`
 
@@ -127,12 +127,37 @@ that went stale while waiting for approval. `--all` updates every local feature 
 
 On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
 
+### `git pa promote [branch]`
+
+For teams with more than dev and main, like dev → uat → main. List the branches between dev
+and main as stages, once for the team:
+
+```sh
+git pa init --shared --main main --dev dev --stages uat     # or "uat staging", in order
+```
+
+`git pa promote feature/PA-77` then merges just that feature branch into uat, in a temporary
+worktree so you stay on dev, and pushes uat (unless auto-push is off). Other work in dev
+doesn't come along, so only approved features reach UAT. It promotes to the first stage the
+feature isn't in yet; `--to <stage>` picks one. `--dry-run` shows the steps.
+
+- It warns when the feature has commits that never reached the stage before it (dev for uat).
+- The stage branch must exist; create it from main once, with `git branch uat origin/main`
+  and `git push -u origin uat`.
+- On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
+- Stage branches are never treated as feature branches: `status`, `clean` and `reset-dev`
+  leave them alone.
+
+Features still reach main through their own pull request (`git pa pr`), which warns when the
+feature isn't in the last stage yet.
+
 ### `git pa pr [branch]`
 
 Opens the "create pull request" page from the feature branch to main in your browser,
 pushing the branch first if needed. Works for GitHub, Azure DevOps, Bitbucket Cloud and
 Bitbucket Server, including SSH host aliases from `~/.ssh/config`. `--print` prints the URL
-instead. For other hosts, set a URL template:
+instead. With stages set up, it warns when the feature isn't in the last one (like uat) yet.
+For other hosts, set a URL template:
 
 ```sh
 git config pa.prUrl "https://git.example.com/repo/pulls/new?from={branch}&to={target}"
@@ -297,6 +322,7 @@ Settings are read from the first of these that has them:
 | `pa.dev` | — | Dev branch name |
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
+| `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
 | `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |

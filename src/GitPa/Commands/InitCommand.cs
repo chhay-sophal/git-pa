@@ -13,6 +13,10 @@ static class InitCommand
         {
             Description = $"Branch types for `git pa new`, like \"{BranchTypes.Format(BranchTypes.Default)}\"; \"default\" resets them",
         };
+        var stagesOption = new Option<string>("--stages")
+        {
+            Description = "Branches between dev and main that features are promoted through, in order, like \"uat\"; \"none\" removes them",
+        };
         var globalOption = new Option<bool>("--global")
         {
             Description = "Save to your global git config instead of this repository",
@@ -22,7 +26,7 @@ static class InitCommand
             Description = $"Save to {PaConfig.SharedFileName} at the repository root, to commit for your team",
         };
 
-        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, typesOption, globalOption, sharedOption };
+        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, typesOption, stagesOption, globalOption, sharedOption };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var global = parseResult.GetValue(globalOption);
@@ -47,16 +51,29 @@ static class InitCommand
             if (types is not null && types.Trim() != "default")
                 BranchTypes.Parse(types); // check before saving anything
 
+            var stages = parseResult.GetValue(stagesOption) is { } stagesValue
+                ? PaConfig.ParseStages(git, stagesValue, main, dev) // check before saving anything
+                : null;
+
             PaConfig.Save(git, main, dev, scope);
             var savedTypes = types is null ? "" : $", branch types = {SaveBranchTypes(git, types.Trim(), scope)}";
-            WarnIfMissing(cli, git, main, dev);
+            var savedStages = "";
+            if (stages is not null)
+            {
+                if (stages.Count == 0)
+                    PaConfig.Unset(git, scope, PaConfig.StagesKey);
+                else
+                    PaConfig.Set(git, scope, PaConfig.StagesKey, string.Join(' ', stages));
+                savedStages = $", stages = {(stages.Count == 0 ? "none" : string.Join(" → ", stages))}";
+            }
+            WarnIfMissing(cli, git, [main, dev, .. stages ?? []]);
             var where = scope switch
             {
                 ConfigScope.Global => " (global)",
                 ConfigScope.Shared => $" to {PaConfig.SharedFileName}; commit it to share it with your team",
                 _ => "",
             };
-            cli.Success($"Saved main = {main}, dev = {dev}{savedTypes}{where}");
+            cli.Success($"Saved main = {main}, dev = {dev}{savedStages}{savedTypes}{where}");
             return 0;
         }));
         return command;
