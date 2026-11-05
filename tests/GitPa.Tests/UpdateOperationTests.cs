@@ -21,12 +21,12 @@ public class UpdateOperationTests
 
         var merged = UpdateOperation.Run(repo.Git, repo.Config, "feat/a", push: true, repo.Reporter);
 
-        Assert.Equal(1, merged);
+        Assert.Equal(new UpdateResult(null, 0, 1), merged);
         Assert.True(repo.Git.Succeeds("merge-base", "--is-ancestor", other.Run("rev-parse", "HEAD"), "feat/a"));
         Assert.Equal(repo.Git.Run("rev-parse", "feat/a"), repo.Git.Run("rev-parse", "origin/feat/a"));
         Assert.Equal("dev", repo.Git.CurrentBranch());
         Assert.Equal("uncommitted on dev\n", TestRepo.Read(repo.Git, "README.md"));
-        Assert.Equal(0, UpdateOperation.Run(repo.Git, repo.Config, "feat/a", push: false, repo.Reporter));
+        Assert.True(UpdateOperation.Run(repo.Git, repo.Config, "feat/a", push: false, repo.Reporter).UpToDate);
     }
 
     [Fact]
