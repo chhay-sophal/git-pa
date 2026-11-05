@@ -31,6 +31,7 @@ static class PrCommand
                 throw new GitPaException($"Branch '{branch}' does not exist.");
 
             WarnIfNotInLastStage(cli, git, config, branch);
+            WarnAboutBase(cli, git, config, branch);
 
             var remoteUrl = git.TryRun("remote", "get-url", config.Remote);
             if (!remoteUrl.Success)
@@ -80,6 +81,29 @@ static class PrCommand
                 (missing < 0 ? $"There is no {stage} branch yet, so {branch} hasn't been through {stage}."
                     : $"{branch} has {missing} commit{(missing == 1 ? "" : "s")} that {(missing == 1 ? "isn't" : "aren't")} in {stageRef} yet.") +
                 $" Promote it first with: git pa promote {branch}");
+    }
+
+    /// <summary>
+    /// A stacked branch's pull request to main also shows its base's changes until the base is merged.
+    /// Once it is, the branch needs main merged in (git pa update) for the pull request to show only its own
+    /// changes; that matters most when the base was squash-merged.
+    /// </summary>
+    static void WarnAboutBase(Cli cli, GitRunner git, PaConfig config, string branch)
+    {
+        if (Stack.Base(git, config, branch) is { } baseBranch)
+        {
+            cli.Reporter.Warn(
+                $"{branch} builds on {baseBranch}, which isn't in {config.Main} yet, so this pull request also shows " +
+                $"{baseBranch}'s changes. Merge {baseBranch}'s pull request first (git pa pr {baseBranch}), " +
+                $"then run git pa update {branch}.");
+            return;
+        }
+        if (Stack.SavedBase(git, branch) is { } merged
+            && Branches.Newest(git, config, branch) is { } feature
+            && !git.Succeeds("merge-base", "--is-ancestor", Branches.LatestMain(git, config), feature))
+            cli.Reporter.Warn(
+                $"{merged}, which {branch} builds on, is in {config.Main} now. Run git pa update {branch} first, " +
+                "so the pull request shows only this branch's changes.");
     }
 
     static bool OpenBrowser(string url)
