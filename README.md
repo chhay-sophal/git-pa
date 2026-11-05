@@ -65,6 +65,30 @@ Ticket numbers may contain letters, digits and dashes, and are uppercased (`pa-7
 Without prompts: `git pa new -t feature --ticket 1234 --title "Add login page"`. To use an
 exact name instead, pass it directly: `git pa new my/branch-name`.
 
+#### Stacked branches
+
+When a ticket needs another ticket's work that isn't in main yet, start it from that branch
+instead of main, so the two don't conflict:
+
+```sh
+git pa new -t feature --ticket PA-78 --from feature/PA-77
+```
+
+When you have feature branches, `git pa new` also asks what to start from (main is the
+default). git-pa remembers that PA-78 builds on PA-77:
+
+- `git pa update feature/PA-78` merges PA-77's latest commits too, so review fixes on PA-77
+  reach PA-78. `update --all` updates PA-77 before PA-78.
+- `git pa status` shows *on feature/PA-77* under PA-78.
+- `git pa promote feature/PA-78` warns when PA-77 isn't in that stage yet, since its changes
+  come along.
+- `git pa pr feature/PA-78` warns that the pull request also shows PA-77's changes until PA-77
+  is merged. Merge PA-77 first, then run `git pa update feature/PA-78`, so its pull request
+  shows only its own changes (this matters most when pull requests are squash-merged).
+
+Once PA-77 is merged or deleted, PA-78 counts as based on main again. For a teammate's
+branch, git-pa works out what it builds on from the history.
+
 ### `git pa commit`
 
 Commits changes to a feature branch, merges that branch into dev, and pushes both (unless
@@ -124,6 +148,7 @@ stage, like uat), and whether it has been pushed. Add `--fetch` to fetch from th
 Merges the latest main into a feature branch (picked from a list if omitted) in a temporary
 worktree, so you stay on dev, then pushes it (unless auto-push is off). Use it on branches
 that went stale while waiting for approval. `--all` updates every local feature branch.
+A [stacked branch](#stacked-branches) also gets the latest of the branch it builds on.
 
 On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
 
