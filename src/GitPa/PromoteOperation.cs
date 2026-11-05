@@ -27,6 +27,7 @@ public static class PromoteOperation
         var feature = Branches.NewestOrThrow(git, config, branch);
         EnsureLocalStage(git, config, stage);
         WarnIfUntested(git, config, branch, feature, stage, reporter);
+        WarnIfBaseMissing(git, config, branch, stage, reporter);
 
         int commits;
         using (var worktree = TempWorktree.Create(git, stage, stage))
@@ -131,6 +132,22 @@ public static class PromoteOperation
     static GitPaException MissingStage(PaConfig config, string stage) => new(
         $"Stage branch '{stage}' does not exist locally or on {config.Remote}. Create it from {config.Main} first:\n" +
         $"  git branch {stage} {config.Remote}/{config.Main}  &&  git push -u {config.Remote} {stage}");
+
+    /// <summary>
+    /// A stacked branch can't go anywhere without the branch it builds on, so promoting it brings that
+    /// branch's changes along. Says so when that branch isn't in the stage yet.
+    /// </summary>
+    static void WarnIfBaseMissing(GitRunner git, PaConfig config, string branch, string stage, IReporter reporter)
+    {
+        if (Stack.Base(git, config, branch) is not { } baseBranch
+            || Branches.Newest(git, config, baseBranch) is not { } baseRef
+            || Branches.Latest(git, config, stage) is not { } stageRef
+            || git.Succeeds("merge-base", "--is-ancestor", baseRef, stageRef))
+            return;
+        reporter.Warn(
+            $"{branch} builds on {baseBranch}, which isn't in {stage} yet, so {baseBranch}'s changes come along too. " +
+            $"To promote them separately, promote {baseBranch} first: git pa promote {baseBranch}");
+    }
 
     /// <summary>Warns when the feature has work its previous stage (dev for the first) never got.</summary>
     static void WarnIfUntested(GitRunner git, PaConfig config, string branch, string feature, string stage, IReporter reporter)
