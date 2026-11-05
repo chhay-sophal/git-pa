@@ -37,8 +37,18 @@ merging and deploying for you, without your working folder ever leaving dev.
 - Always branches from the latest main on the remote, not a stale local copy.
 - `git pa new my/exact-name` still accepts any name.
 
+**Stacked branches (`new --from`)**
+- A ticket that needs another ticket's unmerged work starts from that branch: `--from feature/PA-77`,
+  or pick it when `new` asks what to start from. git-pa remembers what the branch builds on.
+- `update` merges the base's new commits too; `--all` updates bases first.
+- `status` shows the base; `promote` warns when the base isn't in the stage yet; `pr` warns until the
+  base is merged, then reminds you to `update` so the pull request shows only its own changes.
+- Once the base is merged or deleted, the branch counts as based on main again. For teammates'
+  branches, the base is worked out from the history.
+
 **Keeping branches current (`update`)**
-- Merges the latest main into a stale feature branch in a hidden working folder.
+- Merges the latest main into a stale feature branch in a hidden working folder (and, for a stacked
+  branch, the latest of its base).
 - `--all` updates every local feature branch, reporting each failure and carrying on.
 - On a conflict nothing changes, and it shows how to resolve it in a separate folder.
 

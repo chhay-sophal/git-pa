@@ -160,6 +160,70 @@ public class CliTests
     }
 
     [Fact]
+    public void New_From_StacksOnAFeatureBranch()
+    {
+        using var repo = new TestRepo();
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        var console = new TestConsole();
+        console.Profile.Width = 200;
+
+        Assert.Equal(0, Run(repo, console, "new", "-t", "feature", "--ticket", "2", "--from", "feature/1"));
+
+        Assert.Equal("feature/1", Stack.SavedBase(repo.Git, "feature/2"));
+        Assert.Contains("It builds on feature/1", console.Output);
+    }
+
+    [Fact]
+    public void New_AsksWhatToStartFrom_WhenThereAreFeatureBranches()
+    {
+        using var repo = new TestRepo();
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        var console = InteractiveConsole();
+        console.Input.PushKey(ConsoleKey.DownArrow); // main -> feature/1
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        Assert.Equal(0, Run(repo, console, "new", "-t", "feature", "--ticket", "2", "--title", "next"));
+
+        Assert.Contains("Start from:", console.Output);
+        Assert.Equal("feature/1", Stack.SavedBase(repo.Git, "feature/2-next"));
+    }
+
+    [Fact]
+    public void Pr_WarnsAboutAnUnmergedBase_ThenAsksForAnUpdate()
+    {
+        using var repo = new TestRepo();
+        repo.Git.Run("config", PullRequestUrl.TemplateKey, "https://example.com/pr?from={branch}&to={target}");
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/1"));
+        TestRepo.Write(repo.Git, "one.txt", "one\n");
+        Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/1", "-m", "one", "--all"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/2", "--from", "feature/1"));
+        TestRepo.Write(repo.Git, "two.txt", "two\n");
+        Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/2", "-m", "two", "--all"));
+
+        var unmerged = new TestConsole();
+        unmerged.Profile.Width = 300;
+        Assert.Equal(0, Run(repo, unmerged, "pr", "feature/2", "--print"));
+        Assert.Contains("Merge feature/1's pull request first", unmerged.Output);
+
+        var other = repo.Clone("reviewer");
+        other.Run("merge", "--quiet", "--squash", "origin/feature/1");
+        other.Run("commit", "--quiet", "-m", "feature 1 (squashed)");
+        other.Run("push", "--quiet", "origin", "main");
+        repo.Git.Run("fetch", "--quiet", "origin");
+
+        var merged = new TestConsole();
+        merged.Profile.Width = 300;
+        Assert.Equal(0, Run(repo, merged, "pr", "feature/2", "--print"));
+        Assert.Contains("Run git pa update feature/2 first", merged.Output);
+
+        Assert.Equal(0, Run(repo, new TestConsole(), "update", "feature/2"));
+        var updated = new TestConsole();
+        updated.Profile.Width = 300;
+        Assert.Equal(0, Run(repo, updated, "pr", "feature/2", "--print"));
+        Assert.DoesNotContain("warning", updated.Output);
+    }
+
+    [Fact]
     public void Init_SavesAndResetsBranchTypes()
     {
         using var repo = new TestRepo();

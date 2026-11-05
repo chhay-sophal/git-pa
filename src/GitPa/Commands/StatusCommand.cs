@@ -45,7 +45,7 @@ static class StatusCommand
         foreach (var b in status.Branches)
         {
             table.AddRow([
-                Markup.Escape(b.Name),
+                Markup.Escape(b.Name) + (b.Base is null ? "" : $"\n[grey]on {Markup.Escape(b.Base)}[/]"),
                 Markup.Escape(b.LastCommit),
                 VsMain(b),
                 InBranch(b.NotInDev),

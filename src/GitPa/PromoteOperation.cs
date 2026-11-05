@@ -24,9 +24,10 @@ public static class PromoteOperation
             foreach (var name in new[] { stage, Previous(config, stage), branch })
                 Branches.TryFetch(git, config, name);
         }
-        var feature = FeatureRef(git, config, branch);
+        var feature = Branches.NewestOrThrow(git, config, branch);
         EnsureLocalStage(git, config, stage);
         WarnIfUntested(git, config, branch, feature, stage, reporter);
+        WarnIfBaseMissing(git, config, branch, stage, reporter);
 
         int commits;
         using (var worktree = TempWorktree.Create(git, stage, stage))
@@ -69,7 +70,7 @@ public static class PromoteOperation
     {
         Branches.EnsureFeature(config, branch);
         stage = ResolveStage(config, stage);
-        var feature = FeatureRef(git, config, branch);
+        var feature = Branches.NewestOrThrow(git, config, branch);
         if (Branches.Latest(git, config, stage) is null)
             throw MissingStage(config, stage);
 
@@ -94,7 +95,7 @@ public static class PromoteOperation
     /// </summary>
     public static string? NextStage(GitRunner git, PaConfig config, string branch)
     {
-        var feature = FeatureRef(git, config, branch);
+        var feature = Branches.NewestOrThrow(git, config, branch);
         return config.Stages.FirstOrDefault(s =>
             Branches.Latest(git, config, s) is not { } stageRef || !git.Succeeds("merge-base", "--is-ancestor", feature, stageRef));
     }
@@ -119,24 +120,6 @@ public static class PromoteOperation
         return stage;
     }
 
-    /// <summary>
-    /// The newest copy of the feature: the local branch, or the remote one when it has commits the local
-    /// one lacks. Throws when the two have diverged, since promoting either would leave work behind.
-    /// </summary>
-    static string FeatureRef(GitRunner git, PaConfig config, string branch)
-    {
-        var hasLocal = git.LocalBranchExists(branch);
-        var remote = git.RemoteBranchExists(config.Remote, branch) ? $"{config.Remote}/{branch}" : null;
-        if (!hasLocal)
-            return remote ?? throw new GitPaException($"Branch '{branch}' does not exist.");
-        if (remote is null || git.Succeeds("merge-base", "--is-ancestor", remote, branch))
-            return branch;
-        if (git.Succeeds("merge-base", "--is-ancestor", branch, remote))
-            return remote;
-        throw new GitPaException(
-            $"Your '{branch}' and {remote} have both changed. Push or pull it first (git pa status shows which), then promote it.");
-    }
-
     static void EnsureLocalStage(GitRunner git, PaConfig config, string stage)
     {
         if (git.LocalBranchExists(stage))
@@ -149,6 +132,22 @@ public static class PromoteOperation
     static GitPaException MissingStage(PaConfig config, string stage) => new(
         $"Stage branch '{stage}' does not exist locally or on {config.Remote}. Create it from {config.Main} first:\n" +
         $"  git branch {stage} {config.Remote}/{config.Main}  &&  git push -u {config.Remote} {stage}");
+
+    /// <summary>
+    /// A stacked branch can't go anywhere without the branch it builds on, so promoting it brings that
+    /// branch's changes along. Says so when that branch isn't in the stage yet.
+    /// </summary>
+    static void WarnIfBaseMissing(GitRunner git, PaConfig config, string branch, string stage, IReporter reporter)
+    {
+        if (Stack.Base(git, config, branch) is not { } baseBranch
+            || Branches.Newest(git, config, baseBranch) is not { } baseRef
+            || Branches.Latest(git, config, stage) is not { } stageRef
+            || git.Succeeds("merge-base", "--is-ancestor", baseRef, stageRef))
+            return;
+        reporter.Warn(
+            $"{branch} builds on {baseBranch}, which isn't in {stage} yet, so {baseBranch}'s changes come along too. " +
+            $"To promote them separately, promote {baseBranch} first: git pa promote {baseBranch}");
+    }
 
     /// <summary>Warns when the feature has work its previous stage (dev for the first) never got.</summary>
     static void WarnIfUntested(GitRunner git, PaConfig config, string branch, string feature, string stage, IReporter reporter)

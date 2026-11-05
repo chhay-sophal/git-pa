@@ -19,6 +19,53 @@ public static class Branches
         : git.LocalBranchExists(branch) ? branch
         : null;
 
+    public static bool Exists(GitRunner git, PaConfig config, string branch) =>
+        git.LocalBranchExists(branch) || git.RemoteBranchExists(config.Remote, branch);
+
+    /// <summary>
+    /// The newest copy of a branch: the local one, or the remote one when it has commits the local one lacks.
+    /// When the two have diverged, the local one. Null when the branch doesn't exist.
+    /// </summary>
+    public static string? Newest(GitRunner git, PaConfig config, string branch)
+    {
+        var remote = git.RemoteBranchExists(config.Remote, branch) ? $"{config.Remote}/{branch}" : null;
+        if (!git.LocalBranchExists(branch))
+            return remote;
+        return remote is not null && git.Succeeds("merge-base", "--is-ancestor", branch, remote)
+            && !git.Succeeds("merge-base", "--is-ancestor", remote, branch)
+            ? remote
+            : branch;
+    }
+
+    /// <summary>
+    /// Like <see cref="Newest"/>, but throws when the branch doesn't exist or its local and remote copies
+    /// have diverged, since using either would leave work behind.
+    /// </summary>
+    public static string NewestOrThrow(GitRunner git, PaConfig config, string branch)
+    {
+        var newest = Newest(git, config, branch) ?? throw new GitPaException($"Branch '{branch}' does not exist.");
+        var remote = $"{config.Remote}/{branch}";
+        if (newest == branch && git.RemoteBranchExists(config.Remote, branch)
+            && !git.Succeeds("merge-base", "--is-ancestor", remote, branch))
+            throw new GitPaException(
+                $"Your '{branch}' and {remote} have both changed. Push or pull it first (git pa status shows which), then try again.");
+        return newest;
+    }
+
+    /// <summary>Feature branches, local or on the remote, by name.</summary>
+    public static IReadOnlyList<string> AllFeatures(GitRunner git, PaConfig config)
+    {
+        var remotePrefix = $"{config.Remote}/";
+        var remote = git.Run("for-each-ref", "--format=%(refname:short)", $"refs/remotes/{config.Remote}")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Where(r => r.StartsWith(remotePrefix))
+            .Select(r => r[remotePrefix.Length..]);
+        return git.LocalBranches().Concat(remote)
+            .Where(b => b != "HEAD" && !config.IsLongLived(b))
+            .Distinct()
+            .ToList();
+    }
+
     /// <summary>Local branches other than main, dev and the stages, most recently committed first.</summary>
     public static IReadOnlyList<string> LocalFeatures(GitRunner git, PaConfig config) =>
         git.LocalBranches().Where(b => !config.IsLongLived(b)).ToList();

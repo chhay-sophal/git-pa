@@ -31,7 +31,7 @@ static class UpdateCommand
 
             IReadOnlyList<string> branches;
             if (parseResult.GetValue(allOption))
-                branches = Branches.LocalFeatures(git, config);
+                branches = BasesFirst(git, config, Branches.LocalFeatures(git, config));
             else
                 branches = [cli.Require(parseResult.GetValue(branchArgument), "branch name",
                     () => Prompts.PickFeatureBranch(cli, git, config, "Branch to update:"))];
@@ -44,10 +44,19 @@ static class UpdateCommand
             {
                 try
                 {
-                    var merged = UpdateOperation.Run(git, config, branch, push, cli.Reporter);
-                    cli.Success(merged == 0
-                        ? $"{branch} is already up to date with {config.Main}."
-                        : $"Merged {merged} commit{(merged == 1 ? "" : "s")} from {config.Main} into {branch}.");
+                    var result = UpdateOperation.Run(git, config, branch, push, cli.Reporter);
+                    var sources = result.Base is null ? config.Main : $"{result.Base} and {config.Main}";
+                    if (result.UpToDate)
+                        cli.Success($"{branch} is already up to date with {sources}.");
+                    else
+                    {
+                        var parts = new List<string>();
+                        if (result.FromBase > 0)
+                            parts.Add($"{Plural(result.FromBase)} from {result.Base}");
+                        if (result.FromMain > 0)
+                            parts.Add($"{Plural(result.FromMain)} from {config.Main}");
+                        cli.Success($"Merged {string.Join(" and ", parts)} into {branch}.");
+                    }
                 }
                 catch (GitPaException e) when (branches.Count > 1)
                 {
@@ -59,5 +68,30 @@ static class UpdateCommand
             return failed == 0 ? 0 : 1;
         }));
         return command;
+    }
+
+    static string Plural(int commits) => commits == 1 ? "1 commit" : $"{commits} commits";
+
+    /// <summary>
+    /// Orders the branches so each comes after the branch it builds on, so a stacked branch gets
+    /// its base's update in the same run.
+    /// </summary>
+    static IReadOnlyList<string> BasesFirst(GitRunner git, PaConfig config, IReadOnlyList<string> branches)
+    {
+        var bases = branches.ToDictionary(b => b, b => Stack.Base(git, config, b));
+        var ordered = new List<string>();
+        void Add(string branch, int depth)
+        {
+            if (ordered.Contains(branch))
+                return;
+            // The depth limit guards against a base loop someone set up by hand.
+            if (depth < branches.Count && bases.GetValueOrDefault(branch) is { } baseBranch && bases.ContainsKey(baseBranch))
+                Add(baseBranch, depth + 1);
+            if (!ordered.Contains(branch))
+                ordered.Add(branch);
+        }
+        foreach (var branch in branches)
+            Add(branch, 0);
+        return ordered;
     }
 }

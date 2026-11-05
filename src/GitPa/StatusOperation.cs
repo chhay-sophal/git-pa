@@ -4,9 +4,10 @@ namespace GitPa;
 /// <param name="ToPull">Commits on the remote copy that aren't local, or null when the branch was never pushed.</param>
 /// <param name="NotInStages">Per stage (in <see cref="RepoStatus.Stages"/> order), the branch's commits it doesn't
 /// have yet, or null when that stage branch doesn't exist.</param>
+/// <param name="Base">The feature branch this one builds on, or null when it's based on main.</param>
 public sealed record BranchStatus(
     string Name, string LastCommit, int AheadOfMain, int BehindMain, int NotInDev, int? ToPush, int? ToPull,
-    IReadOnlyList<int?> NotInStages);
+    IReadOnlyList<int?> NotInStages, string? Base = null);
 
 /// <param name="DevUpstream">The remote dev branch, or null when there is none.</param>
 /// <param name="DevWasReset">Whether the remote dev was rebuilt by reset-dev since the local dev last synced.</param>
@@ -44,7 +45,8 @@ public static class StatusOperation
                 var notInStages = stageRefs
                     .Select(r => r is null ? (int?)null : int.Parse(git.Run("rev-list", "--count", $"{r}..{name}")))
                     .ToList();
-                return new BranchStatus(name, parts[1], ahead, behind, notInDev, toPush, toPull, notInStages);
+                return new BranchStatus(name, parts[1], ahead, behind, notInDev, toPush, toPull, notInStages,
+                    Stack.Base(git, config, name));
             })
             .ToList();
 
