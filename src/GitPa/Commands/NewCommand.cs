@@ -18,11 +18,15 @@ static class NewCommand
         };
         var ticketOption = new Option<string>("--ticket") { Description = "Ticket number (for types that take one)" };
         var titleOption = new Option<string>("--title") { Description = "Short title (required for types without a ticket, optional otherwise)" };
+        var fromOption = new Option<string>("--from")
+        {
+            Description = "Feature branch to build on, when this one needs its unmerged work (default: main)",
+        };
         var dryRunOption = Cli.DryRunOption();
 
-        var command = new Command("new", "Create a branch from the latest main, staying on dev")
+        var command = new Command("new", "Create a branch from the latest main (or another feature branch), staying on dev")
         {
-            nameArgument, typeOption, ticketOption, titleOption, dryRunOption,
+            nameArgument, typeOption, ticketOption, titleOption, fromOption, dryRunOption,
         };
         command.SetAction(parseResult => cli.Execute(() =>
         {
@@ -35,15 +39,39 @@ static class NewCommand
             if (name is not null && (type ?? ticket ?? title) is not null)
                 throw new GitPaException("Give either a branch name or --type/--ticket/--title, not both.");
             name ??= BuildName(cli, BranchTypes.Load(git), type, ticket, title);
+            var from = parseResult.GetValue(fromOption) ?? AskFrom(cli, git, config);
 
             if (parseResult.GetValue(dryRunOption))
-                return cli.PrintPlan(NewBranchOperation.Plan(git, config, name));
+                return cli.PrintPlan(NewBranchOperation.Plan(git, config, name, from));
 
-            var baseRef = NewBranchOperation.Run(git, config, name, cli.Reporter);
+            var baseRef = NewBranchOperation.Run(git, config, name, cli.Reporter, from);
             cli.Success($"Created {name} from {baseRef}. You are still on {git.CurrentBranch() ?? "a detached HEAD"}.");
+            if (Stack.SavedBase(git, name) is { } stackedOn)
+                cli.Console.MarkupLine(
+                    $"[grey]It builds on {Markup.Escape(stackedOn)}: git pa update brings in its new commits, " +
+                    $"and merging {Markup.Escape(stackedOn)} to {Markup.Escape(config.Main)} first keeps this branch's pull request small.[/]");
             return 0;
         }));
         return command;
+    }
+
+    /// <summary>
+    /// Asks what the branch starts from when there are feature branches it could build on; main is the
+    /// default. Null (main) when not interactive.
+    /// </summary>
+    static string? AskFrom(Cli cli, GitRunner git, PaConfig config)
+    {
+        if (!cli.Interactive)
+            return null;
+        var features = Branches.LocalFeatures(git, config);
+        if (features.Count == 0)
+            return null;
+        var mainChoice = $"{config.Main} (most branches)";
+        var choice = cli.Console.Prompt(new SelectionPrompt<string>()
+            .Title("Start from:")
+            .PageSize(10)
+            .AddChoices([mainChoice, .. features]));
+        return choice == mainChoice ? null : choice;
     }
 
     /// <summary>Builds the name from the options, asking for whatever is missing when interactive.</summary>
