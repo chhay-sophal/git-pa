@@ -50,10 +50,10 @@ public class PaConfigTests
     public void Get_PrefersThisRepositorysConfigOverSharedFile()
     {
         using var repo = new TestRepo();
-        TestRepo.Write(repo.Git, PaConfig.SharedFileName, "[pa]\n\tdev = team-dev\n\tbranchTypes = story\n");
+        TestRepo.Write(repo.Git, PaConfig.SharedFileName, "[pa]\n\tdev = team-dev\n\tstages = uat\n");
 
         Assert.Equal("dev", PaConfig.Get(repo.Git, PaConfig.DevKey)); // set locally by TestRepo
-        Assert.Equal("story", PaConfig.Get(repo.Git, BranchTypes.Key));
+        Assert.Equal("uat", PaConfig.Get(repo.Git, PaConfig.StagesKey));
     }
 
     [Fact]
