@@ -167,7 +167,6 @@ teammates don't need to run `init`.
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
 | `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
-| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
