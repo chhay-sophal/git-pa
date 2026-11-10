@@ -292,7 +292,7 @@ public class CliTests
     }
 
     [Fact]
-    public void Commit_PrefixesSummaryWithTicketFromBranch()
+    public void Commit_KeepsTheSummaryAsWritten()
     {
         using var repo = new TestRepo();
         NewBranchOperation.Run(repo.Git, repo.Config, "feature/PA-77-add-login", repo.Reporter);
@@ -302,7 +302,7 @@ public class CliTests
             "commit", "-a", "-b", "feature/PA-77-add-login", "-m", "Add login page", "--no-push");
 
         Assert.Equal(0, exitCode);
-        Assert.Equal("PA-77: Add login page", repo.Git.Run("log", "-1", "--format=%s", "feature/PA-77-add-login"));
+        Assert.Equal("Add login page", repo.Git.Run("log", "-1", "--format=%s", "feature/PA-77-add-login"));
     }
 
     [Fact]
