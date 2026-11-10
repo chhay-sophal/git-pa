@@ -11,7 +11,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | Command | What it does |
 | --- | --- |
 | `git pa init` | Saves the main and dev branch names for the repository, globally, or in a committed `.gitpa` for the team |
-| `git pa new` | Creates a branch from the latest main, named from type, ticket and title |
+| `git pa new` | Creates a branch from the latest main (or a feature branch it builds on) |
 | `git pa commit` | Commits chosen changes to a feature branch, merges it into dev, and pushes |
 | `git pa sync` | Pulls the latest remote dev into dev, keeping uncommitted changes |
 | `git pa status` | Shows dev and every feature branch compared with main, dev and the remote |
@@ -25,17 +25,9 @@ merging and deploying for you, without your working folder ever leaving dev.
 ## Branches
 
 **Creating branches (`new`)**
-- Pick a type: `bugfix`, `hotfix`, `feature`, `chore`, `refactor`, `test` or `docs`.
-- Or your own types: set `pa.branchTypes` (or `git pa init --branch-types`), marking the ones
-  without a ticket with `:noticket`, like `feature spike chore:noticket`. Save it to `.gitpa` with
-  `--shared` so the whole team gets the same list.
-- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`;
-  `chore` and `docs` take a title instead of a ticket.
-- Ticket numbers are uppercased; titles are lowercased with spaces turned into `-`, and characters
-  git or shells dislike are dropped.
-- Branch names are limited to 60 characters, checked while you type.
+- Any naming convention: `git pa new feature/PA-77-add-login` uses the name exactly as given,
+  or asks for it in a terminal. It's checked as you type: git must accept it and it must not exist yet.
 - Always branches from the latest main on the remote, not a stale local copy.
-- `git pa new my/exact-name` still accepts any name.
 
 **Stacked branches (`new --from`)**
 - A ticket that needs another ticket's unmerged work starts from that branch: `--from feature/PA-77`,
@@ -80,8 +72,6 @@ merging and deploying for you, without your working folder ever leaving dev.
 - **Branch picker:** feature branches listed most recent first.
 - **Multi-line descriptions:** type line by line (an empty line finishes), or repeat `-d` for
   paragraphs.
-- **Jira linking:** the branch's ticket is added to the summary (`PA-77: Add login page`), so
-  Bitbucket links the commit to the Jira issue. Not added twice.
 - **Teammates' work:** fast-forwards the feature branch to its remote copy before committing, and
   merges the latest remote dev before pushing, so pushes aren't rejected.
 - **Auto-push:** pushes the feature branch and dev afterwards. Turn off with `pa.autoPush false`,

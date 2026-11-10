@@ -49,21 +49,14 @@ would run without changing anything; `deploy --dry-run` shows its steps, or the 
 Creates a branch from the latest main on the remote. You stay on dev, and uncommitted changes
 are untouched.
 
-You pick the branch type and enter the details; the name is built for you:
+Pass the branch name, following your team's naming convention:
 
-| Type | Asks for | Branch name |
-| --- | --- | --- |
-| `bugfix`, `hotfix`, `feature`, `refactor`, `test` | Ticket number, title (optional) | `feature/1234-add-login-page`, `feature/1234` |
-| `chore`, `docs` | Title | `chore/update-nuget-packages` |
+```sh
+git pa new feature/PA-77-add-login
+```
 
-Your team can use its own list of types instead; see [Configuration](#configuration).
-
-The title is lowercased, spaces become `-`, and characters git or shells dislike are dropped.
-Ticket numbers may contain letters, digits and dashes, and are uppercased (`pa-77` becomes
-`PA-77`). Branch names are limited to 60 characters.
-
-Without prompts: `git pa new -t feature --ticket 1234 --title "Add login page"`. To use an
-exact name instead, pass it directly: `git pa new my/branch-name`.
+In a terminal, leave it out and git-pa asks for it. The name is used exactly as you type it;
+git-pa only checks that git accepts it and that the branch doesn't exist yet.
 
 #### Stacked branches
 
@@ -71,7 +64,7 @@ When a ticket needs another ticket's work that isn't in main yet, start it from 
 instead of main, so the two don't conflict:
 
 ```sh
-git pa new -t feature --ticket PA-78 --from feature/PA-77
+git pa new feature/PA-78 --from feature/PA-77
 ```
 
 When you have feature branches, `git pa new` also asks what to start from (main is the
@@ -108,9 +101,8 @@ finishes it. Every prompt can also be answered with an option:
 | `--push` / `--no-push` | Override the `pa.autoPush` setting for this commit |
 | `--dry-run` | Show what would happen without changing anything |
 
-When the target branch carries a ticket (`feature/PA-77-add-login`), the summary is prefixed
-with it (`PA-77: Add login page`), so Bitbucket links the commit to the Jira issue. Summaries
-that already start with the ticket are left alone.
+The summary is committed as you write it, so follow your team's convention (like
+`PA-77: Add login page` to link the commit to a Jira issue).
 
 Without a terminal (scripts, CI), `--branch` and `--summary` are required and the currently
 staged changes are committed (or all changes, with `--all`).
@@ -348,35 +340,11 @@ Settings are read from the first of these that has them:
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
 | `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
-| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 Turn off auto-push for one repository with `git config pa.autoPush false`, or for all of
 them with `git config --global pa.autoPush false`.
-
-### Branch types
-
-`pa.branchTypes` lists the types `git pa new` offers, in order, separated by spaces or commas.
-Add `:noticket` to a type that takes a title instead of a ticket number. When it isn't set, the
-default is:
-
-```
-bugfix hotfix feature chore:noticket refactor test docs:noticket
-```
-
-Set the team's list with `git pa init --shared --main main --dev dev --branch-types "feature bugfix spike chore:noticket"`
-and commit `.gitpa`. Without `--shared` it's saved for just you (`--global` for all your
-repositories), and `default` goes back to the built-in list. Commits on any type that takes a
-ticket get the ticket prefix.
-
-```ini
-# .gitpa
-[pa]
-	main = main
-	dev = dev
-	branchTypes = feature bugfix spike chore:noticket
-```
 
 ## Development
 
