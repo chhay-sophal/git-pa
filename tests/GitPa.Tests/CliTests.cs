@@ -16,65 +16,32 @@ public class CliTests
     }
 
     [Fact]
-    public void New_PromptsForTypeTicketAndTitle()
+    public void New_PromptsForTheBranchName()
     {
         using var repo = new TestRepo();
         var console = InteractiveConsole();
-        console.Input.PushKey(ConsoleKey.DownArrow); // bugfix -> hotfix
-        console.Input.PushKey(ConsoleKey.DownArrow); // hotfix -> feature
-        console.Input.PushKey(ConsoleKey.Enter);
-        console.Input.PushTextWithEnter("1234");
-        console.Input.PushTextWithEnter("Add login page");
+        console.Input.PushTextWithEnter("bad..name"); // rejected, asked again
+        console.Input.PushTextWithEnter("story/PA-77_Add-Login");
 
         var exitCode = Run(repo, console, "new");
 
         Assert.Equal(0, exitCode);
-        Assert.True(repo.Git.LocalBranchExists("feature/1234-add-login-page"));
+        Assert.Contains("Not a valid branch name", console.Output);
+        Assert.True(repo.Git.LocalBranchExists("story/PA-77_Add-Login")); // kept as typed
     }
 
     [Fact]
-    public void New_ChorePromptsForTitleOnly()
-    {
-        using var repo = new TestRepo();
-        var console = InteractiveConsole();
-        console.Input.PushTextWithEnter("Update packages");
-
-        var exitCode = Run(repo, console, "new", "--type", "chore");
-
-        Assert.Equal(0, exitCode);
-        Assert.True(repo.Git.LocalBranchExists("chore/update-packages"));
-    }
-
-    [Fact]
-    public void New_BuildsNameFromOptions_WhenNotInteractive()
+    public void New_TakesTheNameAsIs_AndRequiresIt_WhenNotInteractive()
     {
         using var repo = new TestRepo();
 
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "bugfix", "--ticket", "PA-77", "--title", "Null check"));
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "exact/name"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "JIRA-1234"));
+        var missing = new TestConsole();
+        Assert.NotEqual(0, Run(repo, missing, "new"));
+        Assert.NotEqual(0, Run(repo, new TestConsole(), "new", "bad..name"));
 
-        Assert.True(repo.Git.LocalBranchExists("bugfix/PA-77-null-check"));
-        Assert.True(repo.Git.LocalBranchExists("exact/name"));
-    }
-
-    [Fact]
-    public void New_UsesConfiguredBranchTypes()
-    {
-        using var repo = new TestRepo();
-        repo.Git.Run("config", BranchTypes.Key, "story notes:noticket");
-        var console = InteractiveConsole();
-        console.Input.PushKey(ConsoleKey.DownArrow); // story -> notes
-        console.Input.PushKey(ConsoleKey.Enter);
-        console.Input.PushTextWithEnter("Release notes");
-
-        Assert.Equal(0, Run(repo, console, "new"));
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "story", "--ticket", "PA-1"));
-        var unknown = new TestConsole();
-        Assert.NotEqual(0, Run(repo, unknown, "new", "-t", "feature", "--ticket", "PA-2"));
-
-        Assert.True(repo.Git.LocalBranchExists("notes/release-notes"));
-        Assert.True(repo.Git.LocalBranchExists("story/PA-1"));
-        Assert.Contains("story, notes", unknown.Output);
+        Assert.True(repo.Git.LocalBranchExists("JIRA-1234"));
+        Assert.Contains("Missing branch name", missing.Output);
     }
 
     [Fact]
@@ -83,7 +50,7 @@ public class CliTests
         using var repo = new TestRepo();
         var console = new TestConsole();
 
-        Assert.Equal(0, Run(repo, console, "init", "--shared", "--main", "main", "--dev", "dev", "--branch-types", "story notes:noticket"));
+        Assert.Equal(0, Run(repo, console, "init", "--shared", "--main", "main", "--dev", "dev", "--stages", "uat"));
         Assert.Contains("commit it", console.Output);
         Assert.NotEqual(0, Run(repo, new TestConsole(), "init", "--shared", "--global", "--main", "main", "--dev", "dev"));
 
@@ -93,7 +60,7 @@ public class CliTests
         teammate.Run("switch", "--quiet", "dev");
 
         Assert.Equal(("main", "dev"), (PaConfig.Load(teammate).Main, PaConfig.Load(teammate).Dev));
-        Assert.Equal("story notes:noticket", BranchTypes.Format(BranchTypes.Load(teammate)));
+        Assert.Equal(["uat"], PaConfig.Load(teammate).Stages);
     }
 
     [Fact]
@@ -110,7 +77,7 @@ public class CliTests
 
         repo.Git.Run("branch", "--quiet", "uat", "origin/main");
         repo.Git.Run("push", "--quiet", "-u", "origin", "uat");
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/1"));
         TestRepo.Write(repo.Git, "a.txt", "a\n");
         Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/1", "-m", "add a", "--all"));
 
@@ -140,7 +107,7 @@ public class CliTests
         repo.Git.Run("config", PullRequestUrl.TemplateKey, "https://example.com/pr?from={branch}&to={target}");
         repo.Git.Run("branch", "--quiet", "uat", "origin/main");
         repo.Git.Run("push", "--quiet", "-u", "origin", "uat");
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/1"));
         TestRepo.Write(repo.Git, "a.txt", "a\n");
         Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/1", "-m", "add a", "--all"));
 
@@ -163,11 +130,11 @@ public class CliTests
     public void New_From_StacksOnAFeatureBranch()
     {
         using var repo = new TestRepo();
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/1"));
         var console = new TestConsole();
         console.Profile.Width = 200;
 
-        Assert.Equal(0, Run(repo, console, "new", "-t", "feature", "--ticket", "2", "--from", "feature/1"));
+        Assert.Equal(0, Run(repo, console, "new", "feature/2", "--from", "feature/1"));
 
         Assert.Equal("feature/1", Stack.SavedBase(repo.Git, "feature/2"));
         Assert.Contains("It builds on feature/1", console.Output);
@@ -177,12 +144,12 @@ public class CliTests
     public void New_AsksWhatToStartFrom_WhenThereAreFeatureBranches()
     {
         using var repo = new TestRepo();
-        Assert.Equal(0, Run(repo, new TestConsole(), "new", "-t", "feature", "--ticket", "1"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/1"));
         var console = InteractiveConsole();
         console.Input.PushKey(ConsoleKey.DownArrow); // main -> feature/1
         console.Input.PushKey(ConsoleKey.Enter);
 
-        Assert.Equal(0, Run(repo, console, "new", "-t", "feature", "--ticket", "2", "--title", "next"));
+        Assert.Equal(0, Run(repo, console, "new", "feature/2-next"));
 
         Assert.Contains("Start from:", console.Output);
         Assert.Equal("feature/1", Stack.SavedBase(repo.Git, "feature/2-next"));
@@ -375,17 +342,5 @@ public class CliTests
         Assert.Equal(0, exitCode);
         Assert.Contains("https://example.com/pr?from=feat%2Fa&to=main", console.Output);
         Assert.True(repo.Git.RemoteBranchExists("origin", "feat/a"));
-    }
-
-    [Fact]
-    public void New_FailsWithoutNameWhenNotInteractive()
-    {
-        using var repo = new TestRepo();
-        var console = new TestConsole();
-
-        var exitCode = Run(repo, console, "new");
-
-        Assert.Equal(1, exitCode);
-        Assert.Contains("Missing --type (or a branch name)", console.Output);
     }
 }
