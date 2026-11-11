@@ -67,7 +67,7 @@ static class CommitCommand
             if (dryRun)
                 return cli.PrintPlan(CommitOperation.Plan(git, config, request, stageAll: all));
 
-            var sha = CommitOperation.Run(git, config, request, cli.Reporter);
+            var sha = CommitOperation.Run(git, config, request, cli.Reporter, cli.ConflictResolver(git));
             cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");
             return 0;
         }));

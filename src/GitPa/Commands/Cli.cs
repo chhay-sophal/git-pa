@@ -16,6 +16,9 @@ public sealed class Cli(IAnsiConsole console, string workingDirectory)
 
     public GitRunner OpenRepository() => GitRunner.OpenRepository(WorkingDirectory);
 
+    /// <summary>Opens conflicts in an editor and waits for them to be resolved; null (fail instead) when not interactive.</summary>
+    public IConflictResolver? ConflictResolver(GitRunner git) => Interactive ? EditorConflictResolver.For(this, git) : null;
+
     /// <summary>Runs a handler, turning expected failures into a red message and exit code 1.</summary>
     public int Execute(Func<int> handler)
     {

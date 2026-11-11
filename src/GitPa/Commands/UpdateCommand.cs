@@ -44,7 +44,7 @@ static class UpdateCommand
             {
                 try
                 {
-                    var result = UpdateOperation.Run(git, config, branch, push, cli.Reporter);
+                    var result = UpdateOperation.Run(git, config, branch, push, cli.Reporter, cli.ConflictResolver(git));
                     var sources = result.Base is null ? config.Main : $"{result.Base} and {config.Main}";
                     if (result.UpToDate)
                         cli.Success($"{branch} is already up to date with {sources}.");

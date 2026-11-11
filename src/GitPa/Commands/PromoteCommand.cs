@@ -52,7 +52,7 @@ static class PromoteCommand
             if (parseResult.GetValue(dryRunOption))
                 return cli.PrintPlan(PromoteOperation.Plan(git, config, branch, stage, push));
 
-            var result = PromoteOperation.Run(git, config, branch, stage, push, cli.Reporter);
+            var result = PromoteOperation.Run(git, config, branch, stage, push, cli.Reporter, cli.ConflictResolver(git));
             cli.Success(result.AlreadyThere
                 ? $"{branch} is already in {result.Stage}."
                 : $"Merged {branch} into {result.Stage}" +

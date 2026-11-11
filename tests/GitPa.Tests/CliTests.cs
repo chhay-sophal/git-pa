@@ -328,4 +328,59 @@ public class CliTests
         Assert.Contains("https://example.com/pr?from=feat%2Fa&to=main", console.Output);
         Assert.True(repo.Git.RemoteBranchExists("origin", "feat/a"));
     }
+
+    /// <summary>feature/a changed README.md and is in dev; you change the same line on dev for feature/b.</summary>
+    static TestRepo ConflictingCommit(string editor)
+    {
+        var repo = new TestRepo();
+        repo.Git.Run("config", EditorConflictResolver.EditorKey, editor);
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/a"));
+        TestRepo.Write(repo.Git, "README.md", "from a\n");
+        Assert.Equal(0, Run(repo, new TestConsole(), "commit", "-b", "feature/a", "-m", "a", "--all"));
+        Assert.Equal(0, Run(repo, new TestConsole(), "new", "feature/b"));
+        TestRepo.Write(repo.Git, "README.md", "from a and b\n");
+        return repo;
+    }
+
+    [Fact]
+    public void Commit_Conflict_WaitsUntilResolved_OrCancelled()
+    {
+        using var repo = ConflictingCommit("git-pa-no-such-editor");
+        var console = InteractiveConsole();
+        console.Input.PushKey(ConsoleKey.Enter); // still has markers
+        console.Input.PushTextWithEnter("a");
+
+        var exitCode = Run(repo, console, "commit", "-b", "feature/b", "-m", "b", "-d", "x", "--all");
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("feature/a changed it on dev", console.Output);
+        Assert.Contains("Could not start 'git-pa-no-such-editor'", console.Output);
+        Assert.Contains("Still has conflict markers", console.Output);
+        Assert.Equal(repo.Git.Run("rev-parse", "main"), repo.Git.Run("rev-parse", "feature/b"));
+    }
+
+    [Fact]
+    public void Commit_Conflict_OpensTheEditor()
+    {
+        using var repo = ConflictingCommit("git --version"); // any command that starts and exits cleanly
+        var console = InteractiveConsole();
+        console.Input.PushTextWithEnter("a");
+
+        Run(repo, console, "commit", "-b", "feature/b", "-m", "b", "-d", "x", "--all");
+
+        Assert.Contains("Opened them in a new git --version window", console.Output);
+    }
+
+    [Fact]
+    public void Commit_Conflict_FailsWithoutPrompting_WhenNotInteractive()
+    {
+        using var repo = ConflictingCommit("git-pa-no-such-editor");
+        var console = new TestConsole();
+        console.Profile.Width = 300;
+
+        Assert.Equal(1, Run(repo, console, "commit", "-b", "feature/b", "-m", "b", "--all"));
+
+        Assert.Contains("don't apply cleanly", console.Output);
+        Assert.DoesNotContain("Press", console.Output);
+    }
 }
