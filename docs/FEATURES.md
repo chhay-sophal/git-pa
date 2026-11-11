@@ -42,12 +42,13 @@ merging and deploying for you, without your working folder ever leaving dev.
 - Merges the latest main into a stale feature branch in a hidden working folder (and, for a stacked
   branch, the latest of its base).
 - `--all` updates every local feature branch, reporting each failure and carrying on.
-- On a conflict nothing changes, and it shows how to resolve it in a separate folder.
+- On a conflict, opens it in VS Code and waits until it's resolved (or cancelled).
 
 **Stages like UAT (`promote`)**
 - For dev → uat → main (or more stages): list them in `pa.stages`, e.g. `git pa init --shared --stages uat`.
 - `promote` merges one feature branch into the next stage it isn't in yet, in a hidden working folder,
   and pushes it. Other work in dev stays out, so only approved features reach UAT.
+- On a conflict, opens it in VS Code and waits until it's resolved (or cancelled).
 - Warns when the feature skipped the stage before (dev for uat). `--to` picks the stage.
 - `status` shows a column per stage; `clean` and `reset-dev` never touch stage branches.
 
@@ -142,7 +143,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 
 | Situation | What git-pa does |
 | --- | --- |
-| Staged changes depend on code only on dev | Refuses to commit; nothing changes |
+| Staged changes conflict with code only on dev | Names the feature it conflicts with and opens the conflict in VS Code; dev keeps your staged version. Cancel and nothing changes |
 | Merge into dev has conflicts | Leaves the merge open and lists the exact steps to finish |
 | A merge would overwrite untracked files | Stops before doing anything and names the files |
 | A merge is in progress | Refuses to run until it's finished or cancelled |
@@ -168,6 +169,7 @@ teammates don't need to run `init`.
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
 | `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
+| `pa.editor` | `code` | Editor that opens conflicts for you to resolve |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 **`dataverse.json`** (committed in the repository): the environment URL, and in `plugins` the build

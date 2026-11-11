@@ -116,12 +116,40 @@ Under the hood:
    and then the feature branch are merged in, and any **unstaged** changes are put back.
 4. The feature branch and dev are pushed.
 
-If the patch doesn't apply to the feature branch, nothing is committed and your working tree
-is left exactly as it was. This usually means your change depends on code that is on dev
-(from someone else's feature) but not on your feature branch.
+If the patch doesn't apply cleanly to the feature branch, your change touches code that is on
+dev (from someone else's feature) but not on your feature branch. git-pa names that feature
+and lets you [resolve the conflict](#resolving-conflicts) in VS Code. Once you have, your
+commit goes to the feature branch, and dev keeps exactly the version you staged. Cancel, and
+nothing is committed: your working tree is left exactly as it was.
 
 If a merge into dev conflicts, the merge is left open for you to resolve in your editor, and
 the error lists the exact steps to finish. Your commit on the feature branch is already safe.
+
+### Resolving conflicts
+
+When `commit`, `update` or `promote` hits a conflict in their temporary worktree, git-pa
+opens the conflicted files in a new VS Code window and waits:
+
+```
+conflict: Your staged changes don't apply cleanly to 'feature/PA-78'. feature/PA-77 changed it on dev, and that work isn't on feature/PA-78.
+  src/pricing.js
+"ours" is feature/PA-78, "theirs" is your change. Keep your change, but leave out code that is only on dev: feature/PA-78 must work without it.
+Opened them in a new code window. Resolve them, save, and close that window.
+Press Enter when they're resolved, or type a to cancel:
+```
+
+Resolve the conflicts (VS Code's *Accept Current / Incoming / Both* buttons or the merge
+editor), save, close the window, and press Enter. git-pa checks no conflict markers are left
+and carries on: it commits, merges and pushes as usual. Type `a` to cancel; nothing is
+changed.
+
+- **Committing:** keep only your own change. Code that exists only on dev belongs to another
+  feature, and your branch must reach main without it. If your work truly needs that feature,
+  [stack](#stacked-branches) your branch on it instead.
+- **Another editor:** `git config --global pa.editor cursor` (any command that opens a folder
+  and files, then returns). If it can't be started, git-pa prints the folder to open yourself.
+- **Scripts and CI** (no terminal): nothing is opened; the command fails without changing
+  anything, as before.
 
 ### `git pa sync`
 
@@ -142,7 +170,7 @@ worktree, so you stay on dev, then pushes it (unless auto-push is off). Use it o
 that went stale while waiting for approval. `--all` updates every local feature branch.
 A [stacked branch](#stacked-branches) also gets the latest of the branch it builds on.
 
-On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
+On a conflict, git-pa opens it in VS Code for you to [resolve](#resolving-conflicts).
 
 ### `git pa promote [branch]`
 
@@ -161,7 +189,7 @@ feature isn't in yet; `--to <stage>` picks one. `--dry-run` shows the steps.
 - It warns when the feature has commits that never reached the stage before it (dev for uat).
 - The stage branch must exist; create it from main once, with `git branch uat origin/main`
   and `git push -u origin uat`.
-- On a conflict nothing is changed, and the error shows how to resolve it in a separate folder.
+- On a conflict, git-pa opens it in VS Code for you to [resolve](#resolving-conflicts).
 - Stage branches are never treated as feature branches: `status`, `clean` and `reset-dev`
   leave them alone.
 
@@ -341,6 +369,7 @@ Settings are read from the first of these that has them:
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
 | `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
+| `pa.editor` | `code` | Editor that opens conflicts for you to resolve |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 Turn off auto-push for one repository with `git config pa.autoPush false`, or for all of
