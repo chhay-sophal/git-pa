@@ -11,7 +11,9 @@ public sealed record PromoteResult(string Stage, bool AlreadyThere, int Commits)
 /// </summary>
 public static class PromoteOperation
 {
-    public static PromoteResult Run(GitRunner git, PaConfig config, string branch, string? stage, bool push, IReporter reporter)
+    /// <param name="resolver">Resolves merge conflicts; without one they fail the promotion.</param>
+    public static PromoteResult Run(GitRunner git, PaConfig config, string branch, string? stage, bool push, IReporter reporter,
+        IConflictResolver? resolver = null)
     {
         Branches.EnsureFeature(config, branch);
         stage = ResolveStage(config, stage);
@@ -41,7 +43,7 @@ public static class PromoteOperation
 
             reporter.Step($"Merging {branch} into {stage}");
             var merge = worktree.Git.TryRun("merge", "--no-ff", "--no-edit", "-m", $"Merge branch '{branch}' into {stage}", feature);
-            if (!merge.Success)
+            if (!merge.Success && !ResolveConflicts(git, config, worktree, branch, stage, resolver))
             {
                 worktree.Git.TryRun("merge", "--abort");
                 var folder = $"../{stage.Replace('/', '-')}";
@@ -118,6 +120,20 @@ public static class PromoteOperation
         if (!config.Stages.Contains(stage))
             throw new GitPaException($"'{stage}' is not a stage. The stages are: {string.Join(", ", config.Stages)} ({PaConfig.StagesKey}).");
         return stage;
+    }
+
+    static bool ResolveConflicts(GitRunner git, PaConfig config, TempWorktree worktree, string branch, string stage,
+        IConflictResolver? resolver)
+    {
+        if (resolver is null)
+            return false;
+        var files = Conflicts.Unmerged(worktree.Git);
+        var stageTip = worktree.Git.Run("rev-parse", "HEAD");
+        var involved = Conflicts.FeaturesInvolved(git, config, branch, stageTip, files);
+        return Conflicts.TryResolveMerge(worktree, resolver, new Conflict(
+            $"Merging '{branch}' into {stage} has conflicts.{Conflicts.InvolvedHint(involved, stage, branch)}",
+            files,
+            $"\"ours\" is {stage}, \"theirs\" is {branch}. Keep both changes, combined so they work together."));
     }
 
     static void EnsureLocalStage(GitRunner git, PaConfig config, string stage)
