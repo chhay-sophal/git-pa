@@ -14,7 +14,9 @@ public sealed record UpdateResult(string? Base, int FromBase, int FromMain)
 /// </summary>
 public static class UpdateOperation
 {
-    public static UpdateResult Run(GitRunner git, PaConfig config, string branch, bool push, IReporter reporter)
+    /// <param name="resolver">Resolves merge conflicts; without one they fail the update.</param>
+    public static UpdateResult Run(GitRunner git, PaConfig config, string branch, bool push, IReporter reporter,
+        IConflictResolver? resolver = null)
     {
         Branches.EnsureFeature(config, branch);
         var savedBase = Stack.SavedBase(git, branch);
@@ -39,8 +41,8 @@ public static class UpdateOperation
 
             var start = worktree.Git.Run("rev-parse", "HEAD");
             if (baseRef is not null)
-                fromBase = Merge(worktree, branch, baseRef, start, reporter);
-            fromMain = Merge(worktree, branch, main, start, reporter);
+                fromBase = Merge(worktree, branch, baseRef, start, reporter, resolver);
+            fromMain = Merge(worktree, branch, main, start, reporter, resolver);
         }
 
         var result = new UpdateResult(baseBranch, fromBase, fromMain);
@@ -57,7 +59,8 @@ public static class UpdateOperation
     /// Merges <paramref name="source"/> into the worktree's branch; returns how many commits it was behind.
     /// On conflicts, puts the branch back at <paramref name="start"/>, undoing earlier merges of this run too.
     /// </summary>
-    static int Merge(TempWorktree worktree, string branch, string source, string start, IReporter reporter)
+    static int Merge(TempWorktree worktree, string branch, string source, string start, IReporter reporter,
+        IConflictResolver? resolver)
     {
         var behind = int.Parse(worktree.Git.Run("rev-list", "--count", $"HEAD..{source}"));
         if (behind == 0)
@@ -66,6 +69,10 @@ public static class UpdateOperation
         reporter.Step($"Merging {source} into {branch}");
         var merge = worktree.Git.TryRun("merge", "--no-edit", source);
         if (merge.Success)
+            return behind;
+        var conflict = new Conflict($"Merging {source} into '{branch}' has conflicts.", Conflicts.Unmerged(worktree.Git),
+            $"\"ours\" is {branch}, \"theirs\" is {source}. Keep both changes, combined so they work together.");
+        if (Conflicts.TryResolveMerge(worktree, resolver, conflict))
             return behind;
 
         worktree.Git.TryRun("merge", "--abort");

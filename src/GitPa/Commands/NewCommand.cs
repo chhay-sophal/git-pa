@@ -9,15 +9,9 @@ static class NewCommand
     {
         var nameArgument = new Argument<string>("name")
         {
-            Description = "Exact branch name, instead of building one from type, ticket and title",
+            Description = "Branch name, following your team's naming convention",
             Arity = ArgumentArity.ZeroOrOne,
         };
-        var typeOption = new Option<string>("--type", "-t")
-        {
-            Description = $"Branch type: {string.Join(", ", BranchTypes.Default.Select(t => t.Name))}, or the ones in {BranchTypes.Key}",
-        };
-        var ticketOption = new Option<string>("--ticket") { Description = "Ticket number (for types that take one)" };
-        var titleOption = new Option<string>("--title") { Description = "Short title (required for types without a ticket, optional otherwise)" };
         var fromOption = new Option<string>("--from")
         {
             Description = "Feature branch to build on, when this one needs its unmerged work (default: main)",
@@ -26,19 +20,14 @@ static class NewCommand
 
         var command = new Command("new", "Create a branch from the latest main (or another feature branch), staying on dev")
         {
-            nameArgument, typeOption, ticketOption, titleOption, fromOption, dryRunOption,
+            nameArgument, fromOption, dryRunOption,
         };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var git = cli.OpenRepository();
             var config = PaConfig.Load(git);
 
-            var name = parseResult.GetValue(nameArgument);
-            var (type, ticket, title) =
-                (parseResult.GetValue(typeOption), parseResult.GetValue(ticketOption), parseResult.GetValue(titleOption));
-            if (name is not null && (type ?? ticket ?? title) is not null)
-                throw new GitPaException("Give either a branch name or --type/--ticket/--title, not both.");
-            name ??= BuildName(cli, BranchTypes.Load(git), type, ticket, title);
+            var name = cli.Require(parseResult.GetValue(nameArgument), "branch name", () => AskName(cli, git));
             var from = parseResult.GetValue(fromOption) ?? AskFrom(cli, git, config);
 
             if (parseResult.GetValue(dryRunOption))
@@ -74,47 +63,9 @@ static class NewCommand
         return choice == mainChoice ? null : choice;
     }
 
-    /// <summary>Builds the name from the options, asking for whatever is missing when interactive.</summary>
-    static string BuildName(Cli cli, IReadOnlyList<BranchType> types, string? typeName, string? ticket, string? title)
-    {
-        typeName = cli.Require(typeName, "--type (or a branch name)", () => cli.Console.Prompt(new SelectionPrompt<string>()
-            .Title("Branch type:")
-            .AddChoices(types.Select(t => t.Name))));
-        var type = BranchTypes.Find(types, typeName);
-
-        if (type.NeedsTicket)
-        {
-            ticket = cli.Require(ticket, "--ticket", () => cli.Console.Prompt(new TextPrompt<string>("Ticket number:")
-                .Validate(t => BranchName.ValidateTicket(t.Trim()) is { } error
-                    ? ValidationResult.Error(error)
-                    : ValidationResult.Success())));
-            if (title is null && cli.Interactive)
-                title = cli.Console.Prompt(new TextPrompt<string>("Title [grey](optional)[/]:")
-                    .AllowEmpty()
-                    .Validate(t => Check(type, ticket, t)));
-        }
-        else
-        {
-            title = cli.Require(title, "--title", () => cli.Console.Prompt(new TextPrompt<string>("Title:")
-                .Validate(t => Check(type, ticket, t))));
-        }
-
-        var name = BranchName.Build(type, ticket, title);
-        if (cli.Interactive)
-            cli.Console.MarkupLine($"Branch name: [bold]{Markup.Escape(name)}[/]");
-        return name;
-    }
-
-    static ValidationResult Check(BranchType type, string? ticket, string title)
-    {
-        try
-        {
-            BranchName.Build(type, ticket, title);
-            return ValidationResult.Success();
-        }
-        catch (GitPaException e)
-        {
-            return ValidationResult.Error(e.Message);
-        }
-    }
+    static string AskName(Cli cli, GitRunner git) =>
+        cli.Ask("Branch name:", validate: name =>
+            !git.IsValidBranchName(name.Trim()) ? "Not a valid branch name"
+            : git.LocalBranchExists(name.Trim()) ? "That branch already exists"
+            : null).Trim();
 }

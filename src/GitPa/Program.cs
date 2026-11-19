@@ -16,7 +16,7 @@ var updateCheck = console.Profile.Capabilities.Interactive && UpdateCheckEnabled
     ? Task.Run(() => UpdateCheck.FindNewerAsync(current, UpdateCheck.CacheFile, UpdateCheck.FetchVersionsAsync, DateTimeOffset.Now))
     : null;
 
-var exitCode = GitPaCli.Build(new Cli(console, Environment.CurrentDirectory)).Parse(args).Invoke();
+var exitCode = GitPaCli.Build(new Cli(console, Environment.CurrentDirectory, Console.ReadLine)).Parse(args).Invoke();
 
 if (updateCheck is not null && updateCheck.Wait(TimeSpan.FromSeconds(1)) && updateCheck.Result is { } newer)
 {

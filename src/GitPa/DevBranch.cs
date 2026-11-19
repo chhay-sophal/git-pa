@@ -53,9 +53,11 @@ public static class DevBranch
 
     /// <summary>
     /// Sets uncommitted changes aside, merges each ref that isn't already in HEAD, then restores the changes.
-    /// On conflicts the merge is left open, and the exception explains how to finish.
+    /// On conflicts, <paramref name="autoResolve"/> (given the ref and the conflicted files) may finish the merge
+    /// and return true; otherwise the merge is left open, and the exception explains how to finish.
     /// </summary>
-    public static void Merge(GitRunner git, IReadOnlyList<string> refs, Restore restore, string failurePrefix, IReporter reporter)
+    public static void Merge(GitRunner git, IReadOnlyList<string> refs, Restore restore, string failurePrefix, IReporter reporter,
+        Func<string, IReadOnlyList<string>, bool>? autoResolve = null)
     {
         var pending = refs.Where(r => !git.Succeeds("merge-base", "--is-ancestor", r, "HEAD")).ToList();
         if (pending.Count == 0)
@@ -81,6 +83,12 @@ public static class DevBranch
                 throw new GitPaException(
                     $"{failurePrefix}Merging {pending[i]} failed:\n{merge.Message}\n" +
                     (restored ? "Your working tree is back as it was." : StashNote));
+            }
+
+            if (autoResolve is not null && autoResolve(pending[i], Conflicts.Unmerged(git)))
+            {
+                reporter.Step($"Resolved the conflicts merging {pending[i]} the same way");
+                continue;
             }
 
             if (dirty && !keepInStash)

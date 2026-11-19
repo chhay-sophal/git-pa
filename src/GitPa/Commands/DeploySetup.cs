@@ -72,8 +72,7 @@ static class DeploySetup
             assemblyPrompt.Select(assembly);
         var chosen = console.Prompt(assemblyPrompt);
 
-        var configuration = console.Prompt(new TextPrompt<string>("Build configuration:")
-            .DefaultValue(existing?.Configuration ?? "Release"));
+        var configuration = cli.Ask("Build configuration:", existing?.Configuration ?? "Release");
 
         var projects = ProjectFinder.Projects(root);
         var deployAssemblies = new List<DeployAssembly>();
@@ -95,7 +94,7 @@ static class DeploySetup
 
             console.MarkupLine($"[bold]{Markup.Escape(assembly.Name)}[/]: built by {Markup.Escape(guess.Project)}" +
                 (guess.UsesILMerge ? " [grey](with ILMerge)[/]" : ""));
-            var file = console.Prompt(new TextPrompt<string>("  File to push:").DefaultValue(guess.File));
+            var file = cli.Ask("  File to push:", guess.File);
             deployAssemblies.Add(new DeployAssembly(assembly.Name, guess.Project, file.Trim(), assembly.Id));
         }
         if (deployAssemblies.Count == 0)

@@ -12,7 +12,9 @@ public static class CommitOperation
     public static void EnsureOnDev(GitRunner git, PaConfig config) => DevBranch.EnsureCheckedOut(git, config);
 
     /// <summary>Returns the short hash of the new commit on the target branch.</summary>
-    public static string Run(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter)
+    /// <param name="resolver">Resolves conflicts applying the change to the target; without one they fail the commit.</param>
+    public static string Run(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter,
+        IConflictResolver? resolver = null)
     {
         var target = request.Target;
         Validate(git, config, request);
@@ -26,11 +28,14 @@ public static class CommitOperation
             incoming.Insert(0, $"{config.Remote}/{config.Dev}");
         DevBranch.CheckUntrackedCollisions(git, config, incoming);
 
-        var sha = CommitInWorktree(git, config, request, reporter);
+        var devStart = git.Run("rev-parse", "HEAD");
+        var stagedTree = git.Run("write-tree");
+        var (sha, resolved) = CommitInWorktree(git, config, request, reporter, resolver);
         reporter.Step($"Committed {sha} to {target}");
 
         DevBranch.Merge(git, incoming, DevBranch.Restore.UnstagedOnly,
-            $"Committed {sha} to '{target}' (that part is done). ", reporter);
+            $"Committed {sha} to '{target}' (that part is done). ", reporter,
+            resolved.Count == 0 ? null : (source, files) => KeepStagedVersion(git, target, source, files, resolved, devStart, stagedTree));
         reporter.Step($"Merged {target} into {config.Dev}");
 
         if (request.Push)
@@ -106,7 +111,9 @@ public static class CommitOperation
             ? ["commit", "--quiet", "-m", request.Summary]
             : ["commit", "--quiet", "-m", request.Summary, "-m", request.Description];
 
-    static string CommitInWorktree(GitRunner git, PaConfig config, CommitRequest request, IReporter reporter)
+    /// <summary>Commits the staged changes to the target; returns the commit and the files whose conflicts were resolved.</summary>
+    static (string Sha, IReadOnlyList<string> Resolved) CommitInWorktree(
+        GitRunner git, PaConfig config, CommitRequest request, IReporter reporter, IConflictResolver? resolver)
     {
         var target = request.Target;
         var patch = TempWorktree.PathFor(git, target) + ".patch";
@@ -124,22 +131,54 @@ public static class CommitOperation
             if (git.RemoteBranchExists(config.Remote, target))
                 worktree.FastForwardTo($"{config.Remote}/{target}");
 
+            IReadOnlyList<string> resolved = [];
             var apply = worktree.Git.TryRun("apply", "--3way", "--index", patch);
             if (!apply.Success)
-                throw new GitPaException(
-                    $"Your staged changes don't apply cleanly to '{target}'. They probably depend on code that is " +
-                    $"on {config.Dev} but not on {target}. Nothing was committed.\n{apply.Message}");
+            {
+                var files = Conflicts.Unmerged(worktree.Git);
+                var involved = files.Count == 0 ? "" : Conflicts.InvolvedHint(
+                    Conflicts.FeaturesInvolved(git, config, target, "HEAD", files), config.Dev, target);
+                var summary = $"Your staged changes don't apply cleanly to '{target}'.{involved}";
+                var conflict = new Conflict(summary, files,
+                    $"\"ours\" is {target}, \"theirs\" is your change. Keep your change, but leave out code that is " +
+                    $"only on {config.Dev}: {target} must work without it.");
+                if (files.Count == 0 || resolver is null || !resolver.Resolve(worktree, conflict))
+                    throw new GitPaException(
+                        $"{summary} They probably depend on code that is on {config.Dev} but not on {target}. " +
+                        $"Nothing was committed.\n{apply.Message}");
+                resolved = files;
+            }
 
             var commit = worktree.Git.TryRun(CommitArgs(request));
             if (!commit.Success)
                 throw new GitPaException($"Committing to '{target}' failed. Nothing was committed.\n{commit.Message}");
 
-            return worktree.Git.Run("rev-parse", "--short", "HEAD");
+            return (worktree.Git.Run("rev-parse", "--short", "HEAD"), resolved);
         }
         finally
         {
             File.Delete(patch);
         }
+    }
+
+    /// <summary>
+    /// After a conflict was resolved on the target, merging the target into dev conflicts on the same lines.
+    /// Your staged version is what dev should have there (dev's code plus your change), so it is used, as long
+    /// as nothing else changed those files in the meantime: dev (from the remote), or the target (from teammates).
+    /// Returns whether the merge was finished.
+    /// </summary>
+    static bool KeepStagedVersion(GitRunner git, string target, string source, IReadOnlyList<string> conflicts,
+        IReadOnlyList<string> resolved, string devStart, string stagedTree)
+    {
+        if (source != target
+            || conflicts.Any(f => !resolved.Contains(f))
+            || !git.Succeeds(["diff", "--quiet", devStart, "HEAD", "--", .. conflicts])
+            || !git.Succeeds("merge-base", "--is-ancestor", $"{target}^", devStart))
+            return false;
+
+        return git.Succeeds(["checkout", stagedTree, "--", .. conflicts])
+            && git.Succeeds(["add", "--", .. conflicts])
+            && git.Succeeds("commit", "--quiet", "--no-edit");
     }
 
     static void Push(GitRunner git, PaConfig config, string target, IReporter reporter)

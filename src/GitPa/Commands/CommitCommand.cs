@@ -53,21 +53,18 @@ static class CommitCommand
 
             var target = cli.Require(branch, "--branch", () => Prompts.PickFeatureBranch(cli, git, config, "Target branch:"));
             summary = cli.Require(summary, "--summary",
-                () => cli.Console.Prompt(new TextPrompt<string>("Commit summary:")
-                    .Validate(s => string.IsNullOrWhiteSpace(s)
-                        ? ValidationResult.Error("A summary is required")
-                        : ValidationResult.Success())));
+                () => cli.Ask("Commit summary:", validate: s => string.IsNullOrWhiteSpace(s) ? "A summary is required" : null));
             var paragraphs = parseResult.GetValue(descriptionOption);
             var description = paragraphs is { Length: > 0 }
                 ? string.Join("\n\n", paragraphs) // like repeated git commit -m
                 : cli.Interactive ? PromptDescription(cli) : null;
 
             var push = parseResult.GetValue(pushOption) || (!parseResult.GetValue(noPushOption) && config.AutoPush);
-            var request = new CommitRequest(target, BranchName.WithTicketPrefix(target, summary, BranchTypes.Load(git)), description, push);
+            var request = new CommitRequest(target, summary.Trim(), description, push);
             if (dryRun)
                 return cli.PrintPlan(CommitOperation.Plan(git, config, request, stageAll: all));
 
-            var sha = CommitOperation.Run(git, config, request, cli.Reporter);
+            var sha = CommitOperation.Run(git, config, request, cli.Reporter, cli.ConflictResolver(git));
             cli.Success($"Committed {sha} to {target} and merged it into {config.Dev}.");
             return 0;
         }));
@@ -100,7 +97,7 @@ static class CommitCommand
         var question = "Commit description [grey](optional, empty line to finish)[/]:";
         while (true)
         {
-            var line = cli.Console.Prompt(new TextPrompt<string>(question).AllowEmpty());
+            var line = cli.Ask(question, allowEmpty: true);
             if (string.IsNullOrWhiteSpace(line))
                 return string.Join('\n', lines);
             lines.Add(line);

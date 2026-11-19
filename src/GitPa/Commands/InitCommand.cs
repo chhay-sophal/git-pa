@@ -9,10 +9,6 @@ static class InitCommand
     {
         var mainOption = new Option<string>("--main") { Description = "Name of the main branch" };
         var devOption = new Option<string>("--dev") { Description = "Name of the dev branch" };
-        var typesOption = new Option<string>("--branch-types")
-        {
-            Description = $"Branch types for `git pa new`, like \"{BranchTypes.Format(BranchTypes.Default)}\"; \"default\" resets them",
-        };
         var stagesOption = new Option<string>("--stages")
         {
             Description = "Branches between dev and main that features are promoted through, in order, like \"uat\"; \"none\" removes them",
@@ -26,7 +22,7 @@ static class InitCommand
             Description = $"Save to {PaConfig.SharedFileName} at the repository root, to commit for your team",
         };
 
-        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, typesOption, stagesOption, globalOption, sharedOption };
+        var command = new Command("init", "Configure the main and dev branches") { mainOption, devOption, stagesOption, globalOption, sharedOption };
         command.SetAction(parseResult => cli.Execute(() =>
         {
             var global = parseResult.GetValue(globalOption);
@@ -47,16 +43,11 @@ static class InitCommand
                     throw new GitPaException($"'{name}' is not a valid branch name.");
             }
 
-            var types = parseResult.GetValue(typesOption);
-            if (types is not null && types.Trim() != "default")
-                BranchTypes.Parse(types); // check before saving anything
-
             var stages = parseResult.GetValue(stagesOption) is { } stagesValue
                 ? PaConfig.ParseStages(git, stagesValue, main, dev) // check before saving anything
                 : null;
 
             PaConfig.Save(git, main, dev, scope);
-            var savedTypes = types is null ? "" : $", branch types = {SaveBranchTypes(git, types.Trim(), scope)}";
             var savedStages = "";
             if (stages is not null)
             {
@@ -73,7 +64,7 @@ static class InitCommand
                 ConfigScope.Shared => $" to {PaConfig.SharedFileName}; commit it to share it with your team",
                 _ => "",
             };
-            cli.Success($"Saved main = {main}, dev = {dev}{savedStages}{savedTypes}{where}");
+            cli.Success($"Saved main = {main}, dev = {dev}{savedStages}{where}");
             return 0;
         }));
         return command;
@@ -84,24 +75,7 @@ static class InitCommand
         var current = PaConfig.Get(git, key)
             ?? candidates.FirstOrDefault(git.LocalBranchExists)
             ?? candidates[0];
-        return cli.Console.Prompt(new TextPrompt<string>(question)
-            .DefaultValue(current)
-            .Validate(name => git.IsValidBranchName(name)
-                ? ValidationResult.Success()
-                : ValidationResult.Error("Not a valid branch name")));
-    }
-
-    /// <summary>Saves pa.branchTypes ("default" unsets it) and returns what was saved.</summary>
-    static string SaveBranchTypes(GitRunner git, string types, ConfigScope scope)
-    {
-        if (types == "default")
-        {
-            PaConfig.Unset(git, scope, BranchTypes.Key);
-            return $"{BranchTypes.Format(BranchTypes.Default)} (default)";
-        }
-        var formatted = BranchTypes.Format(BranchTypes.Parse(types));
-        PaConfig.Set(git, scope, BranchTypes.Key, formatted);
-        return formatted;
+        return cli.Ask(question, current, validate: name => git.IsValidBranchName(name) ? null : "Not a valid branch name");
     }
 
     static void WarnIfMissing(Cli cli, GitRunner git, params string[] branches)

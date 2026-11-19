@@ -11,7 +11,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 | Command | What it does |
 | --- | --- |
 | `git pa init` | Saves the main and dev branch names for the repository, globally, or in a committed `.gitpa` for the team |
-| `git pa new` | Creates a branch from the latest main, named from type, ticket and title |
+| `git pa new` | Creates a branch from the latest main (or a feature branch it builds on) |
 | `git pa commit` | Commits chosen changes to a feature branch, merges it into dev, and pushes |
 | `git pa sync` | Pulls the latest remote dev into dev, keeping uncommitted changes |
 | `git pa status` | Shows dev and every feature branch compared with main, dev and the remote |
@@ -25,17 +25,9 @@ merging and deploying for you, without your working folder ever leaving dev.
 ## Branches
 
 **Creating branches (`new`)**
-- Pick a type: `bugfix`, `hotfix`, `feature`, `chore`, `refactor`, `test` or `docs`.
-- Or your own types: set `pa.branchTypes` (or `git pa init --branch-types`), marking the ones
-  without a ticket with `:noticket`, like `feature spike chore:noticket`. Save it to `.gitpa` with
-  `--shared` so the whole team gets the same list.
-- Names are built for you: `feature/PA-77-add-login-page`, `feature/PA-77`, `chore/update-packages`;
-  `chore` and `docs` take a title instead of a ticket.
-- Ticket numbers are uppercased; titles are lowercased with spaces turned into `-`, and characters
-  git or shells dislike are dropped.
-- Branch names are limited to 60 characters, checked while you type.
+- Any naming convention: `git pa new feature/PA-77-add-login` uses the name exactly as given,
+  or asks for it in a terminal. It's checked as you type: git must accept it and it must not exist yet.
 - Always branches from the latest main on the remote, not a stale local copy.
-- `git pa new my/exact-name` still accepts any name.
 
 **Stacked branches (`new --from`)**
 - A ticket that needs another ticket's unmerged work starts from that branch: `--from feature/PA-77`,
@@ -50,12 +42,13 @@ merging and deploying for you, without your working folder ever leaving dev.
 - Merges the latest main into a stale feature branch in a hidden working folder (and, for a stacked
   branch, the latest of its base).
 - `--all` updates every local feature branch, reporting each failure and carrying on.
-- On a conflict nothing changes, and it shows how to resolve it in a separate folder.
+- On a conflict, opens it in VS Code and waits until it's resolved (or cancelled).
 
 **Stages like UAT (`promote`)**
 - For dev → uat → main (or more stages): list them in `pa.stages`, e.g. `git pa init --shared --stages uat`.
 - `promote` merges one feature branch into the next stage it isn't in yet, in a hidden working folder,
   and pushes it. Other work in dev stays out, so only approved features reach UAT.
+- On a conflict, opens it in VS Code and waits until it's resolved (or cancelled).
 - Warns when the feature skipped the stage before (dev for uat). `--to` picks the stage.
 - `status` shows a column per stage; `clean` and `reset-dev` never touch stage branches.
 
@@ -80,8 +73,6 @@ merging and deploying for you, without your working folder ever leaving dev.
 - **Branch picker:** feature branches listed most recent first.
 - **Multi-line descriptions:** type line by line (an empty line finishes), or repeat `-d` for
   paragraphs.
-- **Jira linking:** the branch's ticket is added to the summary (`PA-77: Add login page`), so
-  Bitbucket links the commit to the Jira issue. Not added twice.
 - **Teammates' work:** fast-forwards the feature branch to its remote copy before committing, and
   merges the latest remote dev before pushing, so pushes aren't rejected.
 - **Auto-push:** pushes the feature branch and dev afterwards. Turn off with `pa.autoPush false`,
@@ -152,7 +143,7 @@ merging and deploying for you, without your working folder ever leaving dev.
 
 | Situation | What git-pa does |
 | --- | --- |
-| Staged changes depend on code only on dev | Refuses to commit; nothing changes |
+| Staged changes conflict with code only on dev | Names the feature it conflicts with and opens the conflict in VS Code; dev keeps your staged version. Cancel and nothing changes |
 | Merge into dev has conflicts | Leaves the merge open and lists the exact steps to finish |
 | A merge would overwrite untracked files | Stops before doing anything and names the files |
 | A merge is in progress | Refuses to run until it's finished or cancelled |
@@ -177,8 +168,8 @@ teammates don't need to run `init`.
 | `pa.remote` | `origin` | Remote to fetch from and push to |
 | `pa.autoPush` | `true` | Push after `commit` and `update` |
 | `pa.stages` | — | Branches between dev and main that `promote` merges features into, in order (like `uat`) |
-| `pa.branchTypes` | see below | Branch types `new` offers |
 | `pa.prUrl` | — | Pull request URL template for hosts `pr` doesn't recognize |
+| `pa.editor` | `code` | Editor that opens conflicts for you to resolve |
 | `pa.updateCheck` | `true` | Check nuget.org for a newer git-pa once a day |
 
 **`dataverse.json`** (committed in the repository): the environment URL, and in `plugins` the build
