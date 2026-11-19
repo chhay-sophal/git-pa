@@ -64,9 +64,8 @@ static class NewCommand
     }
 
     static string AskName(Cli cli, GitRunner git) =>
-        cli.Console.Prompt(new TextPrompt<string>("Branch name:")
-            .Validate(name => !git.IsValidBranchName(name.Trim()) ? ValidationResult.Error("Not a valid branch name")
-                : git.LocalBranchExists(name.Trim()) ? ValidationResult.Error("That branch already exists")
-                : ValidationResult.Success()))
-            .Trim();
+        cli.Ask("Branch name:", validate: name =>
+            !git.IsValidBranchName(name.Trim()) ? "Not a valid branch name"
+            : git.LocalBranchExists(name.Trim()) ? "That branch already exists"
+            : null).Trim();
 }

@@ -75,11 +75,7 @@ static class InitCommand
         var current = PaConfig.Get(git, key)
             ?? candidates.FirstOrDefault(git.LocalBranchExists)
             ?? candidates[0];
-        return cli.Console.Prompt(new TextPrompt<string>(question)
-            .DefaultValue(current)
-            .Validate(name => git.IsValidBranchName(name)
-                ? ValidationResult.Success()
-                : ValidationResult.Error("Not a valid branch name")));
+        return cli.Ask(question, current, validate: name => git.IsValidBranchName(name) ? null : "Not a valid branch name");
     }
 
     static void WarnIfMissing(Cli cli, GitRunner git, params string[] branches)

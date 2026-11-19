@@ -33,9 +33,7 @@ public sealed class EditorConflictResolver(Cli cli, string editor) : IConflictRe
         var remaining = conflict.Files;
         while (true)
         {
-            var answer = console.Prompt(new TextPrompt<string>(
-                    "Press [bold]Enter[/] when they're resolved, or type [bold]a[/] to cancel:")
-                .AllowEmpty());
+            var answer = cli.Ask("Press [bold]Enter[/] when they're resolved, or type [bold]a[/] to cancel:", allowEmpty: true);
             if (answer.Trim().ToLowerInvariant() is "a" or "abort" or "cancel")
                 return false;
 
